@@ -8,7 +8,7 @@
 
 </div>
 
-### ✦ about
+### ✦ Prologue
 
 - 🎓 A sophomore in Computer Science and Technology
 - 📚 A member of [Byr Docs](https://github.com/byrdocs)
