@@ -6,6 +6,7 @@ Fonts come from scripts/fonts.json (Google Fonts subsets), the art from scripts/
 (see prep_images.py).  Edit the text block below to change the wording.
 """
 import json, base64, io, os, random
+from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
 from paper import punch
 
@@ -94,13 +95,18 @@ IMG_W = 560                       # hero.jpg is 1008x864 -> 560x480
 TX = 612                          # text column starts just past the picture
 TAG_SIZE, FOOT_SIZE = 42, 38      # Caveat runs small; this matches the letter height of the old 33/30px serif
 
+# hero intro, played once per page load: type the greeting, then the name, then hand-write the tagline
+TYPE_START = .5                   # s before the first keystroke
+GREET_KEY, NAME_KEY = .065, .13   # s per keystroke (jittered a little so it doesn't feel mechanical)
+LINE_PAUSE, WRITE_PAUSE = .35, .3
+WRITE_SPEED = 230                 # px of handwriting per second
+
 BASE_CSS = """
 .over{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:14px;letter-spacing:2.5px}
 .name{font-family:'Outfit',sans-serif;font-weight:800;font-size:92px;letter-spacing:-2px}
-.tag{font-family:'Caveat',cursive;font-weight:600;font-size:%dpx}
 .pill{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px}
 .foot-en{font-family:'Caveat',cursive;font-weight:600;font-size:%dpx}
-""" % (TAG_SIZE, FOOT_SIZE)
+""" % FOOT_SIZE
 
 GRAIN = ('<filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" '
          'baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>')
@@ -149,24 +155,91 @@ def sparkles(p):
             f'</path></g>')
     return "\n".join(out)
 
-def pills(p, x0=TX, y0=326):
+def pills(p, x0=TX, y0=326, appear=None):
+    """`appear`: fade the pills in one after another from this time (s); they stay visible without SMIL."""
     out = []; x = x0
-    for t in PILLS:
+    for i, t in enumerate(PILLS):
         w = width("jbmono", t, 13) + 28
+        fade = ("" if appear is None else
+                f'<set attributeName="opacity" to="0" begin="0s" fill="freeze"/>'
+                f'<animate attributeName="opacity" from="0" to="1" begin="{appear + i * .15:.2f}s" dur=".5s" fill="freeze"/>')
         out.append(
-            f'<rect x="{x:.1f}" y="{y0}" width="{w:.1f}" height="28" rx="14" fill="{p["pillFill"]}" fill-opacity="{p["pillFillO"]}" '
+            f'<g>{fade}<rect x="{x:.1f}" y="{y0}" width="{w:.1f}" height="28" rx="14" fill="{p["pillFill"]}" fill-opacity="{p["pillFillO"]}" '
             f'stroke="{p["pillStroke"]}" stroke-opacity=".75" stroke-width="1"/>'
-            f'<text x="{x+14:.1f}" y="{y0+18.5}" class="pill" fill="{p["pillText"]}">{t}</text>')
+            f'<text x="{x+14:.1f}" y="{y0+18.5}" class="pill" fill="{p["pillText"]}">{t}</text></g>')
         x += w + 10
     if x - 10 > W - 52:           # stay clear of the binder holes on the right edge
         raise SystemExit(f"pills overflow the banner by {x - 10 - (W - 52):.0f}px; shorten PILLS")
     return "\n".join(out)
 
+def keystrokes(text, key, size, spacing, start, seed):
+    """(time, advance so far) for each character, typed at a slightly uneven pace."""
+    rnd = random.Random(seed)
+    out, t = [], start
+    for i in range(1, len(text) + 1):
+        out.append((t, width(TYPE_FONTS[size], text[:i], size, letter_spacing=spacing)))
+        t += key * rnd.uniform(.7, 1.4)
+    return out
+
+TYPE_FONTS = {14: "jbmono", 92: "outfit"}
+
+def reveal(clip_id, x, y, h, full_w, strokes, pad_l, pad_r):
+    """Clip that grows one character per keystroke.  Its base width shows the whole line, so a viewer
+    without SMIL still sees the text; the set at 0s hides it, later sets outrank it as they begin."""
+    sets = "".join(f'<set attributeName="width" to="{pad_l + w + pad_r:.1f}" begin="{t:.2f}s" fill="freeze"/>' for t, w in strokes)
+    return (f'<clipPath id="{clip_id}"><rect x="{x - pad_l}" y="{y}" width="{pad_l + full_w + pad_r:.1f}" height="{h}">'
+            f'<set attributeName="width" to="0" begin="0s" fill="freeze"/>{sets}</rect></clipPath>')
+
+def handwriting(text, x, baseline, size, color, start):
+    """Each Caveat glyph as an outline that is traced like a pen stroke, then inked in.
+    Base attributes are the finished glyph (static fallback); the 0s sets blank it before the pen arrives."""
+    f = ttf("caveat"); glyphs = f.getGlyphSet(); cmap = f.getBestCmap(); hmtx = f["hmtx"]
+    k = size / f["head"].unitsPerEm
+    out, pen_x = [], x
+    for ch in text:
+        name = cmap[ord(ch)]
+        pen = SVGPathPen(glyphs); glyphs[name].draw(pen); d = pen.getCommands()
+        if d:
+            t = start + (pen_x - x) / WRITE_SPEED
+            draw = max(.28, hmtx[name][0] * k / WRITE_SPEED * 2.2)
+            out.append(
+                f'<path transform="translate({pen_x:.1f} {baseline}) scale({k:.5f} {-k:.5f})" d="{d}" pathLength="1" '
+                f'fill="{color}" stroke="{color}" stroke-opacity="0" stroke-width="{1.3 / k:.1f}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 1">'
+                f'<set attributeName="fill-opacity" to="0" begin="0s" fill="freeze"/>'
+                f'<set attributeName="stroke-opacity" to="1" begin="0s" fill="freeze"/>'
+                f'<set attributeName="stroke-dashoffset" to="1" begin="0s" fill="freeze"/>'
+                f'<animate attributeName="stroke-dashoffset" from="1" to="0" begin="{t:.2f}s" dur="{draw:.2f}s" fill="freeze"/>'
+                f'<animate attributeName="fill-opacity" from="0" to="1" begin="{t + draw * .55:.2f}s" dur=".35s" fill="freeze"/>'
+                f'<animate attributeName="stroke-opacity" from="1" to="0" begin="{t + draw:.2f}s" dur=".3s" fill="freeze"/>'
+                f'</path>')
+        pen_x += hmtx[name][0] * k
+    return "\n".join(out)
+
 def hero(theme):
     p = PAL[theme]
-    css = "".join(fontface(k) for k in ("outfit", "caveat", "jbmono")) + BASE_CSS
+    css = "".join(fontface(k) for k in ("outfit", "jbmono")) + BASE_CSS   # the tagline is drawn as glyph paths
     name_w = width("outfit", NAME, 92, letter_spacing=-2)
     cursor_x = TX + name_w + 12
+    greet = keystrokes(GREETING, GREET_KEY, 14, 2.5, TYPE_START, seed=1)
+    name_start = greet[-1][0] + LINE_PAUSE
+    typed = keystrokes(NAME, NAME_KEY, 92, -2, name_start, seed=2)
+    name_end = typed[-1][0]
+    greet_w = width("jbmono", GREETING, 14, letter_spacing=2.5)
+    # cursor: a thin bar on the greeting line, then the tall bar that follows the name and blinks once done;
+    # its base attributes are the final resting place after the name
+    cur = ('<set attributeName="x" to="{x}" begin="0s" fill="freeze"/><set attributeName="y" to="104" begin="0s" fill="freeze"/>'
+           '<set attributeName="width" to="3" begin="0s" fill="freeze"/><set attributeName="height" to="17" begin="0s" fill="freeze"/>').format(x=TX)
+    cur += "".join(f'<set attributeName="x" to="{TX + w + 1:.1f}" begin="{t:.2f}s" fill="freeze"/>' for t, w in greet)
+    hop = name_start - LINE_PAUSE / 2
+    cur += (f'<set attributeName="x" to="{TX}" begin="{hop:.2f}s" fill="freeze"/><set attributeName="y" to="160" begin="{hop:.2f}s" fill="freeze"/>'
+            f'<set attributeName="width" to="7" begin="{hop:.2f}s" fill="freeze"/><set attributeName="height" to="64" begin="{hop:.2f}s" fill="freeze"/>')
+    cur += "".join(f'<set attributeName="x" to="{TX + w + 12:.1f}" begin="{t:.2f}s" fill="freeze"/>' for t, w in typed)
+    cur += f'<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" begin="{name_end + .15:.2f}s" repeatCount="indefinite"/>'
+    clips = (reveal("typeGreet", TX, 96, 30, greet_w, greet, 4, 0)
+             + reveal("typeName", TX, 128, 120, name_w, typed, 10, 0)
+             + reveal("typeGlow", TX, 70, 220, name_w, typed, 60, 12))
+    write_start = name_end + WRITE_PAUSE
+    write_end = write_start + width("caveat", TAGLINE, TAG_SIZE) / WRITE_SPEED + .4
     if TX + width("caveat", TAGLINE, TAG_SIZE) > W - 52:
         raise SystemExit(f"TAGLINE is too wide for the banner ({width('caveat', TAGLINE, TAG_SIZE):.0f}px)")
     if cursor_x + 7 > W - 52:
@@ -196,6 +269,7 @@ def hero(theme):
 <filter id="blur18" x="-60%" y="-30%" width="220%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
 <filter id="tint" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="{p['imgTint']}"/></filter>
 {GRAIN}
+{clips}
 </defs>
 <g clip-path="url(#card)">
 <rect width="{W}" height="{H}" fill="url(#bg)"/>
@@ -210,12 +284,12 @@ def hero(theme):
 {dust(p, W, H)}
 {sparkles(p)}
 <rect width="{W}" height="{H}" filter="url(#grain)" opacity="{p['grainO']}"/>
-<text x="{TX}" y="118" class="over" fill="{p['over']}">{GREETING}</text>
-<text x="{TX}" y="222" class="name" fill="{p['nameGlow']}" opacity="{p['glowO']}" filter="url(#blur18)">{NAME}</text>
-<text x="{TX}" y="222" class="name" fill="url(#nameGrad)">{NAME}</text>
-<rect x="{cursor_x:.1f}" y="160" width="7" height="64" rx="2" fill="{p['cursor']}"><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" repeatCount="indefinite"/></rect>
-<text x="{TX}" y="282" class="tag" fill="{p['tag']}">{TAGLINE}</text>
-{pills(p)}
+<text x="{TX}" y="118" class="over" fill="{p['over']}" clip-path="url(#typeGreet)">{GREETING}</text>
+<g clip-path="url(#typeGlow)"><text x="{TX}" y="222" class="name" fill="{p['nameGlow']}" opacity="{p['glowO']}" filter="url(#blur18)">{NAME}</text></g>
+<text x="{TX}" y="222" class="name" fill="url(#nameGrad)" clip-path="url(#typeName)">{NAME}</text>
+<rect x="{cursor_x:.1f}" y="160" width="7" height="64" rx="2" fill="{p['cursor']}">{cur}</rect>
+{handwriting(TAGLINE, TX, 282, TAG_SIZE, p['tag'], write_start)}
+{pills(p, appear=write_end)}
 <rect x="1" y="1" width="{W-2}" height="{H-2}" rx="27" fill="none" stroke="{p['border']}" stroke-opacity="{p['borderO']}" stroke-width="1.5"/>
 </g>
 </svg>
