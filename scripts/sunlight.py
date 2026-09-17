@@ -1,10 +1,11 @@
 """Animated light for the cards: drifting shafts of light and shade (light_rays) or breathing halos (halo).
 
-Shafts: wide, blurred bands within a card all lean the same way and drift the same way, so nothing crosses.  Light
-shafts alternate with shade bands between them for a clear light/dark contrast; each band fades in, glides sideways
-and fades out again, staggered so the pattern keeps shifting.
+Shafts: wide, blurred bands within a card all lean the same way and drift the same way, so nothing crosses.  On the
+dark theme light shafts alternate with shade bands for a clear light/dark contrast; each band fades in, glides
+sideways and fades out again, staggered so the pattern keeps shifting.
 Halos: soft radial glows with a faint ring that slowly swell, dim and drift.
-Light theme: warm gold multiplied into the paper (brown for shade).  Dark theme: screen-blended glow, black shade.
+Dark theme: screen-blended warm glow (black shade bands).  Light theme: light only, a pale warm white laid over the
+paper that brightens it; no multiply and no shade, which read as stains and shadows on the light background.
 Standard library only; imported by gen_hero.py and gen_cards.py.
 """
 import random
@@ -15,7 +16,8 @@ LIFE = (22, 32)    # s per band: fade in, glide, fade out — slow enough to rea
 
 
 def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
-    """Defs and body.  `count` light shafts spread over x_from..x_to (at mid-height), a shade band in each gap.
+    """Defs and body.  `count` light shafts spread over x_from..x_to (at mid-height), plus a shade band in each gap
+    on the dark theme.
     from_left: light falls from the upper left to the lower right and drifts right; False mirrors both.
     `uid` keeps ids unique in the document."""
     sign = 1 if from_left else -1
@@ -24,8 +26,8 @@ def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
         light, light_blend, light_peak = "#ffe9a8", "screen", (.30, .42)
         shade, shade_peak = "#000", (.30, .40)
     else:
-        light, light_blend, light_peak = "#f0bd45", "multiply", (.34, .46)
-        shade, shade_peak = "#7a5a1c", (.10, .16)
+        light, light_blend, light_peak = "#fffdf2", "normal", (.50, .66)
+        shade, shade_peak = None, None
 
     def fall(name, color):
         return (f'<linearGradient id="{uid}{name}" x1="0" y1="0" x2="0" y2="1">'
@@ -33,7 +35,7 @@ def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
                 f'<stop offset=".62" stop-color="{color}" stop-opacity=".6"/><stop offset="1" stop-color="{color}" stop-opacity="0"/>'
                 f'</linearGradient>')
 
-    defs = (fall("Light", light) + fall("Shade", shade)
+    defs = (fall("Light", light) + (fall("Shade", shade) if shade else "")
             + f'<filter id="{uid}Soft" x="-150%" y="-10%" width="400%" height="120%"><feGaussianBlur stdDeviation="14 3"/></filter>')
 
     def band(x, w, peak, grad):
@@ -51,15 +53,16 @@ def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
     for i in range(count):
         x = x_from + (i + rnd.uniform(.3, .7)) * step
         lights.append(band(x, rnd.uniform(80, 150), rnd.uniform(*light_peak), "Light"))
-        shades.append(band(x + step / 2, rnd.uniform(90, 170), rnd.uniform(*shade_peak), "Shade"))
-    return defs, (f'<g style="mix-blend-mode:multiply">{"".join(shades)}</g>'
-                  f'<g style="mix-blend-mode:{light_blend}">{"".join(lights)}</g>')
+        if shade:
+            shades.append(band(x + step / 2, rnd.uniform(90, 170), rnd.uniform(*shade_peak), "Shade"))
+    shade_layer = f'<g style="mix-blend-mode:multiply">{"".join(shades)}</g>' if shades else ""
+    return defs, shade_layer + f'<g style="mix-blend-mode:{light_blend}">{"".join(lights)}</g>'
 
 
 def halo(uid, glows, dark):
     """Defs and body for soft halos.  `glows` is a list of (cx, cy, r, ring): each glow breathes (grows ~12% and
     dims) and drifts a little on its own slow cycle; `ring` adds the faint ring a bright light throws around itself."""
-    color, blend, core = ("#ffe3a0", "screen", .55) if dark else ("#f2c24e", "multiply", .50)
+    color, blend, core = ("#ffe3a0", "screen", .55) if dark else ("#fffdf2", "normal", .85)
     ease = ".45 0 .55 1;.45 0 .55 1"
     defs = (f'<radialGradient id="{uid}Glow"><stop offset="0" stop-color="{color}"/>'
             f'<stop offset=".3" stop-color="{color}" stop-opacity=".62"/><stop offset=".65" stop-color="{color}" stop-opacity=".2"/>'
@@ -72,7 +75,7 @@ def halo(uid, glows, dark):
         swell = (f'values="1;1.12;1" keyTimes="0;.5;1" calcMode="spline" keySplines="{ease}" '
                  f'dur="{breathe}s" begin="{-i * 3.1:.1f}s" repeatCount="indefinite"')
         ring_el = (f'<circle r="{r * .78:.0f}" fill="none" stroke="{color}" stroke-width="{max(6, r * .05):.0f}" '
-                   f'opacity="{.42 if dark else .5}" filter="url(#{uid}Ring)"/>' if ring else "")
+                   f'opacity="{.42 if dark else .8}" filter="url(#{uid}Ring)"/>' if ring else "")
         body.append(
             f'<g transform="translate({cx} {cy})"><g>'
             f'<animateTransform attributeName="transform" type="translate" values="0 0;{dx} {dy};0 0" keyTimes="0;.5;1" '
