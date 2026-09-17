@@ -12,9 +12,9 @@ from paper import punch
 # ---- text ----------------------------------------------------------------------------------------
 NAME = "Shxiao101"
 GREETING = "hi there, i'm"
-TAGLINE = "code, books, and quiet afternoons."
+TAGLINE = "code, books, and quiet afternoons"
 PILLS = ["Byr Docs", "computer science", "always reading"]
-FOOT_LINE = "thanks for stopping by."
+FOOT_LINE = "thanks for stopping by"
 FOOT_SUB = "Shxiao  ·  Amano Tooko"
 # --------------------------------------------------------------------------------------------------
 
@@ -92,14 +92,15 @@ FADE_OUT = smooth_fade()
 W, H = 1200, 480
 IMG_W = 560                       # hero.jpg is 1008x864 -> 560x480
 TX = 612                          # text column starts just past the picture
+TAG_SIZE, FOOT_SIZE = 42, 38      # Caveat runs small; this matches the letter height of the old 33/30px serif
 
 BASE_CSS = """
 .over{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:14px;letter-spacing:2.5px}
 .name{font-family:'Outfit',sans-serif;font-weight:800;font-size:92px;letter-spacing:-2px}
-.tag{font-family:'Instrument Serif',serif;font-style:italic;font-size:33px}
+.tag{font-family:'Caveat',cursive;font-weight:600;font-size:%dpx}
 .pill{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px}
-.foot-en{font-family:'Instrument Serif',serif;font-style:italic;font-size:30px}
-"""
+.foot-en{font-family:'Caveat',cursive;font-weight:600;font-size:%dpx}
+""" % (TAG_SIZE, FOOT_SIZE)
 
 GRAIN = ('<filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" '
          'baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>')
@@ -163,9 +164,11 @@ def pills(p, x0=TX, y0=326):
 
 def hero(theme):
     p = PAL[theme]
-    css = "".join(fontface(k) for k in ("outfit", "iserif", "jbmono")) + BASE_CSS
+    css = "".join(fontface(k) for k in ("outfit", "caveat", "jbmono")) + BASE_CSS
     name_w = width("outfit", NAME, 92, letter_spacing=-2)
     cursor_x = TX + name_w + 12
+    if TX + width("caveat", TAGLINE, TAG_SIZE) > W - 52:
+        raise SystemExit(f"TAGLINE is too wide for the banner ({width('caveat', TAGLINE, TAG_SIZE):.0f}px)")
     if cursor_x + 7 > W - 52:
         raise SystemExit(f"NAME is too wide for the banner ({name_w:.0f}px)")
     label = f"{NAME} — {TAGLINE}"
@@ -272,7 +275,7 @@ def leaves(w, h, seed=21):
 
 def footer(theme):
     p = PAL[theme]
-    css = "".join(fontface(k) for k in ("iserif", "jbmono")) + BASE_CSS
+    css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {FW} {FH}" width="{FW}" height="{FH}" role="img" aria-label="{FOOT_LINE}">
