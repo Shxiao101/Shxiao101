@@ -1,35 +1,53 @@
-"""Soft shafts of light drifting across a card.
+"""Shafts of light and shade drifting across a card.
 
-Wide, blurred shafts lean along the light's direction, taper out at both ends, and each one fades in, glides
-sideways and fades out again, staggered so some are always passing.
-Warm multiply on the light theme (sunlit gold on the paper), screen on the dark theme (a glow).
+Wide, blurred bands all lean the same way and drift the same way, so nothing ever crosses.  Light shafts
+alternate with shade bands between them for a clear light/dark contrast; each band fades in, glides sideways
+and fades out again, staggered so the pattern keeps shifting.
+Light theme: warm gold light and brown shade, both multiplied into the paper.
+Dark theme: screen-blended glow for the light, multiplied black for the shade.
 Standard library only; imported by gen_hero.py and gen_cards.py.
 """
 import random
 
+SKEW = 22      # degrees; positive leans the top of each band to the left (light from the upper left)
+DRIFT = 140    # px each band glides rightwards over its lifetime
 
-def light_rays(uid, x_from, x_to, h, skew, drift, dark, seed=1, count=4):
-    """Defs and body.  Shafts are spread over x_from..x_to (measured at mid-height), lean by `skew` degrees
-    and glide `drift` px (sign = direction) over their lifetime.  `uid` keeps ids unique in the document."""
+
+def light_rays(uid, x_from, x_to, h, dark, seed=1, count=4):
+    """Defs and body.  `count` light shafts spread over x_from..x_to (at mid-height), a shade band in each gap.
+    `uid` keeps ids unique in the document."""
     rnd = random.Random(seed)
-    color, blend = ("#ffe9a8", "screen") if dark else ("#f0bd45", "multiply")
-    defs = (f'<linearGradient id="{uid}Fall" x1="0" y1="0" x2="0" y2="1">'
-            f'<stop offset="0" stop-color="{color}" stop-opacity="0"/><stop offset=".18" stop-color="{color}"/>'
-            f'<stop offset=".62" stop-color="{color}" stop-opacity=".55"/><stop offset="1" stop-color="{color}" stop-opacity="0"/>'
-            f'</linearGradient>'
-            f'<filter id="{uid}Soft" x="-150%" y="-10%" width="400%" height="120%"><feGaussianBlur stdDeviation="18 3"/></filter>')
-    shafts = []
-    for i in range(count):
-        x = x_from + (i + rnd.uniform(.15, .85)) / count * (x_to - x_from)
-        w = rnd.uniform(70, 140)
-        peak = rnd.uniform(.13, .19) if dark else rnd.uniform(.18, .26)
+    if dark:
+        light, light_blend, light_peak = "#ffe9a8", "screen", (.30, .42)
+        shade, shade_peak = "#000", (.30, .40)
+    else:
+        light, light_blend, light_peak = "#f0bd45", "multiply", (.34, .46)
+        shade, shade_peak = "#7a5a1c", (.10, .16)
+
+    def fall(name, color):
+        return (f'<linearGradient id="{uid}{name}" x1="0" y1="0" x2="0" y2="1">'
+                f'<stop offset="0" stop-color="{color}" stop-opacity="0"/><stop offset=".18" stop-color="{color}"/>'
+                f'<stop offset=".62" stop-color="{color}" stop-opacity=".6"/><stop offset="1" stop-color="{color}" stop-opacity="0"/>'
+                f'</linearGradient>')
+
+    defs = (fall("Light", light) + fall("Shade", shade)
+            + f'<filter id="{uid}Soft" x="-150%" y="-10%" width="400%" height="120%"><feGaussianBlur stdDeviation="14 3"/></filter>')
+
+    def band(x, w, peak, grad):
         dur = rnd.uniform(11, 18)
         begin = -rnd.uniform(0, dur)
-        travel = drift * rnd.uniform(.7, 1.3)
-        shafts.append(
-            f'<g transform="translate({x:.0f} {h / 2:.0f})"><g opacity="0">'
-            f'<animate attributeName="opacity" values="0;{peak:.2f};{peak:.2f};0" keyTimes="0;.3;.7;1" dur="{dur:.1f}s" begin="{begin:.1f}s" repeatCount="indefinite"/>'
-            f'<animateTransform attributeName="transform" type="translate" values="{-travel / 2:.0f} 0;{travel / 2:.0f} 0" dur="{dur:.1f}s" begin="{begin:.1f}s" repeatCount="indefinite"/>'
-            f'<rect x="{-w / 2:.1f}" y="{-h / 2 - 40:.0f}" width="{w:.1f}" height="{h + 80:.0f}" transform="skewX({skew})" '
-            f'fill="url(#{uid}Fall)" filter="url(#{uid}Soft)"/></g></g>')
-    return defs, f'<g style="mix-blend-mode:{blend}">{"".join(shafts)}</g>'
+        travel = DRIFT * rnd.uniform(.8, 1.2)
+        return (f'<g transform="translate({x:.0f} {h / 2:.0f})"><g opacity="0">'
+                f'<animate attributeName="opacity" values="0;{peak:.2f};{peak:.2f};0" keyTimes="0;.3;.7;1" dur="{dur:.1f}s" begin="{begin:.1f}s" repeatCount="indefinite"/>'
+                f'<animateTransform attributeName="transform" type="translate" values="{-travel / 2:.0f} 0;{travel / 2:.0f} 0" dur="{dur:.1f}s" begin="{begin:.1f}s" repeatCount="indefinite"/>'
+                f'<rect x="{-w / 2:.1f}" y="{-h / 2 - 40:.0f}" width="{w:.1f}" height="{h + 80:.0f}" transform="skewX({SKEW})" '
+                f'fill="url(#{uid}{grad})" filter="url(#{uid}Soft)"/></g></g>')
+
+    step = (x_to - x_from) / count
+    lights, shades = [], []
+    for i in range(count):
+        x = x_from + (i + rnd.uniform(.3, .7)) * step
+        lights.append(band(x, rnd.uniform(80, 150), rnd.uniform(*light_peak), "Light"))
+        shades.append(band(x + step / 2, rnd.uniform(90, 170), rnd.uniform(*shade_peak), "Shade"))
+    return defs, (f'<g style="mix-blend-mode:multiply">{"".join(shades)}</g>'
+                  f'<g style="mix-blend-mode:{light_blend}">{"".join(lights)}</g>')

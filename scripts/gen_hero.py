@@ -57,7 +57,7 @@ PAL = {
    name0="#ffffff", name1="#fbf0c2", name2="#e4cf5a", nameGlow="#c9a227", glowO=".55",
    over="#dcc964", tag="#f5ecc8",
    pillStroke="#b8a646", pillFill="#c9a227", pillFillO=".14", pillText="#f3e9b8",
-   beam="#f7e58a", beamO=".10", dust="#fff4c4", dustO="1", spark="#fff2b0",
+   dust="#fff4c4", dustO="1", spark="#fff2b0",
    border="#e8d98a", borderO=".20", grainO=".045", cursor="#e4cf5a", imgBottom=".35",
    imgTint="0.97 0 0 0 0  0 0.93 0 0 0  0 0 0.84 0 0  0 0 0 1 0",
    footText="#fbf3d4", footMono="#b3a670",
@@ -69,7 +69,7 @@ PAL = {
    name0="#3b340c", name1="#6b5d12", name2="#a8841a", nameGlow="#f2e173", glowO=".75",
    over="#7a6b12", tag="#4f4516",
    pillStroke="#c7b04a", pillFill="#c9a227", pillFillO=".10", pillText="#5e5214",
-   beam="#fff8cf", beamO=".70", dust="#d9bd4a", dustO=".55", spark="#b8921c",
+   dust="#d9bd4a", dustO=".55", spark="#b8921c",
    border="#8a7a1a", borderO=".18", grainO=".03", cursor="#a8841a", imgBottom=".55",
    imgTint="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0",
    footText="#3b340c", footMono="#857a45",
@@ -132,18 +132,6 @@ def dust(p, w, h, seed=7, n=26):
                          f'<animate attributeName="fill-opacity" values="1;.25;1" dur="{tw:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></circle>')
     return (f'<g filter="url(#blur9)" fill="{p["dust"]}">' + "".join(soft) + "</g>"
             f'<g fill="{p["dust"]}">' + "".join(sharp) + "</g>")
-
-def beams(p, xs, h, angle=24, seed=3):
-    """Slanted shafts of sunlight that slowly breathe."""
-    rnd = random.Random(seed)
-    out = []
-    for x in xs:
-        bw = rnd.uniform(46, 110); dur = rnd.uniform(7, 12); beg = -rnd.uniform(0, 6)
-        o = float(p["beamO"])
-        out.append(
-            f'<rect x="{x:.0f}" y="-120" width="{bw:.0f}" height="{h+240}" transform="rotate({angle} {x:.0f} 0)" opacity="{o*.6:.2f}">'
-            f'<animate attributeName="opacity" values="{o*.35:.2f};{o:.2f};{o*.35:.2f}" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></rect>')
-    return f'<g filter="url(#blur18)" fill="{p["beam"]}">' + "".join(out) + "</g>"
 
 SPARKS = [(1128,76,9,3.1,0.0),(1150,300,8,2.6,0.8),(660,52,6,3.6,1.5),(1090,428,7,2.9,0.4),(498,64,7,3.3,2.1),(930,40,5,2.4,1.1),(1136,196,5,3.8,0.6)]
 def sparkles(p):
@@ -236,8 +224,8 @@ def hero(theme):
             f'<set attributeName="width" to="7" begin="{hop:.2f}s" fill="freeze"/><set attributeName="height" to="64" begin="{hop:.2f}s" fill="freeze"/>')
     cur += "".join(f'<set attributeName="x" to="{TX + w + 12:.1f}" begin="{t:.2f}s" fill="freeze"/>' for t, w in typed)
     cur += f'<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" begin="{name_end + .15:.2f}s" repeatCount="indefinite"/>'
-    # light comes from the girl's window on the left: rays lean down-right and drift rightwards over the text side
-    sun_defs, sun = light_rays("sunH", 540, 1160, H, 26, 150, theme == "dark", seed=4)
+    # light and shade drifting over the text side; same lean and drift as the stats banner, so nothing crosses
+    sun_defs, sun = light_rays("sunH", 540, 1160, H, theme == "dark", seed=4)
     clips = (reveal("typeGreet", TX, 96, 30, greet_w, greet, 4, 0)
              + reveal("typeName", TX, 128, 120, name_w, typed, 10, 0)
              + reveal("typeGlow", TX, 70, 220, name_w, typed, 60, 12))
@@ -283,7 +271,6 @@ def hero(theme):
 <ellipse cx="1080" cy="470" rx="300" ry="140" fill="{p['blob3']}" opacity="{p['blob3o']}"/>
 <ellipse cx="760" cy="300" rx="210" ry="220" fill="{p['blob4']}" opacity="{p['blob4o']}"><animate attributeName="rx" values="210;260;210" dur="14s" repeatCount="indefinite"/></ellipse>
 </g>
-{beams(p, (560, 720, 905, 1060), H)}
 <image href="data:image/jpeg;base64,{hero_b64}" x="0" y="0" width="{IMG_W}" height="{H}" preserveAspectRatio="xMidYMid slice" mask="url(#mImg)" filter="url(#tint)"/>
 {sun}
 {dust(p, W, H)}

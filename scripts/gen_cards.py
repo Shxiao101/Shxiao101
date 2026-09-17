@@ -274,8 +274,8 @@ def stats_panel(theme, d):
         f'<g transform="translate({x} {y})"><path d="{star_path(r)}" fill="{p["spark"]}">'
         f'<animate attributeName="opacity" values="0.15;1;0.15" dur="{dur}s" begin="{beg}s" repeatCount="indefinite"/></path></g>'
         for x, y, r, dur, beg in [(640, 58, 7, 3.2, 0), (604, 236, 5, 2.7, 1.1), (1150, 430, 8, 3.6, .5), (700, 448, 5, 2.9, 1.8)])
-    # her window is on the right, so the rays mirror the hero's: lean down-left, drift leftwards over the numbers
-    sun_defs, sun = light_rays("sunS", 30, 700, H, -26, -150, theme == "dark", seed=9)
+    # light and shade drifting over the numbers; same lean and drift as the hero, so nothing crosses
+    sun_defs, sun = light_rays("sunS", 30, 700, H, theme == "dark", seed=9)
     today = d["today"]
     updated = f"updated {today.strftime('%b').lower()} {today.day}, {today.year}"
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="github stats of {LOGIN}">
