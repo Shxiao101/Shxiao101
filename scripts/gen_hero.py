@@ -224,8 +224,8 @@ def hero(theme):
             f'<set attributeName="width" to="7" begin="{hop:.2f}s" fill="freeze"/><set attributeName="height" to="64" begin="{hop:.2f}s" fill="freeze"/>')
     cur += "".join(f'<set attributeName="x" to="{TX + w + 12:.1f}" begin="{t:.2f}s" fill="freeze"/>' for t, w in typed)
     cur += f'<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" begin="{name_end + .15:.2f}s" repeatCount="indefinite"/>'
-    # light and shade drifting over the text side; same lean and drift as the stats banner, so nothing crosses
-    sun_defs, sun = light_rays("sunH", 540, 1160, H, theme == "dark", seed=4)
+    # light and shade over the text side, falling from the upper left to the lower right
+    sun_defs, sun = light_rays("sunH", 540, 1160, H, theme == "dark", from_left=True, seed=4)
     clips = (reveal("typeGreet", TX, 96, 30, greet_w, greet, 4, 0)
              + reveal("typeName", TX, 128, 120, name_w, typed, 10, 0)
              + reveal("typeGlow", TX, 70, 220, name_w, typed, 60, 12))
