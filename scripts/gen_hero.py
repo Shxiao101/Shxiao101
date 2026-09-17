@@ -9,7 +9,7 @@ import json, base64, io, os, random
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
 from paper import punch
-from sunlight import light_rays
+from sunlight import halo
 
 # ---- text ----------------------------------------------------------------------------------------
 NAME = "Shxiao101"
@@ -224,8 +224,8 @@ def hero(theme):
             f'<set attributeName="width" to="7" begin="{hop:.2f}s" fill="freeze"/><set attributeName="height" to="64" begin="{hop:.2f}s" fill="freeze"/>')
     cur += "".join(f'<set attributeName="x" to="{TX + w + 12:.1f}" begin="{t:.2f}s" fill="freeze"/>' for t, w in typed)
     cur += f'<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" begin="{name_end + .15:.2f}s" repeatCount="indefinite"/>'
-    # light and shade over the text side, falling from the upper left to the lower right
-    sun_defs, sun = light_rays("sunH", 540, 1160, H, theme == "dark", from_left=True, seed=4)
+    # halo: the big glow spills in from the girl's window at the edge of the picture, two smaller ones further out
+    sun_defs, sun = halo("sunH", [(640, 140, 280, True), (1030, 380, 140, False), (900, 60, 90, False)], theme == "dark")
     clips = (reveal("typeGreet", TX, 96, 30, greet_w, greet, 4, 0)
              + reveal("typeName", TX, 128, 120, name_w, typed, 10, 0)
              + reveal("typeGlow", TX, 70, 220, name_w, typed, 60, 12))

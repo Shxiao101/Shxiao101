@@ -1,10 +1,10 @@
-"""Shafts of light and shade drifting across a card.
+"""Animated light for the cards: drifting shafts of light and shade (light_rays) or breathing halos (halo).
 
-Wide, blurred bands within a card all lean the same way and drift the same way, so nothing crosses.  Light shafts
-alternate with shade bands between them for a clear light/dark contrast; each band fades in, glides sideways
+Shafts: wide, blurred bands within a card all lean the same way and drift the same way, so nothing crosses.  Light
+shafts alternate with shade bands between them for a clear light/dark contrast; each band fades in, glides sideways
 and fades out again, staggered so the pattern keeps shifting.
-Light theme: warm gold light and brown shade, both multiplied into the paper.
-Dark theme: screen-blended glow for the light, multiplied black for the shade.
+Halos: soft radial glows with a faint ring that slowly swell, dim and drift.
+Light theme: warm gold multiplied into the paper (brown for shade).  Dark theme: screen-blended glow, black shade.
 Standard library only; imported by gen_hero.py and gen_cards.py.
 """
 import random
@@ -54,3 +54,31 @@ def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
         shades.append(band(x + step / 2, rnd.uniform(90, 170), rnd.uniform(*shade_peak), "Shade"))
     return defs, (f'<g style="mix-blend-mode:multiply">{"".join(shades)}</g>'
                   f'<g style="mix-blend-mode:{light_blend}">{"".join(lights)}</g>')
+
+
+def halo(uid, glows, dark):
+    """Defs and body for soft halos.  `glows` is a list of (cx, cy, r, ring): each glow breathes (grows ~12% and
+    dims) and drifts a little on its own slow cycle; `ring` adds the faint ring a bright light throws around itself."""
+    color, blend, core = ("#ffe3a0", "screen", .55) if dark else ("#f2c24e", "multiply", .50)
+    ease = ".45 0 .55 1;.45 0 .55 1"
+    defs = (f'<radialGradient id="{uid}Glow"><stop offset="0" stop-color="{color}"/>'
+            f'<stop offset=".3" stop-color="{color}" stop-opacity=".62"/><stop offset=".65" stop-color="{color}" stop-opacity=".2"/>'
+            f'<stop offset="1" stop-color="{color}" stop-opacity="0"/></radialGradient>'
+            f'<filter id="{uid}Ring" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter>')
+    body = []
+    for i, (cx, cy, r, ring) in enumerate(glows):
+        breathe, wander = 9 + 2.5 * i, 31 + 6 * i
+        dx, dy = (22, 14) if i % 2 == 0 else (-18, 12)
+        swell = (f'values="1;1.12;1" keyTimes="0;.5;1" calcMode="spline" keySplines="{ease}" '
+                 f'dur="{breathe}s" begin="{-i * 3.1:.1f}s" repeatCount="indefinite"')
+        ring_el = (f'<circle r="{r * .78:.0f}" fill="none" stroke="{color}" stroke-width="{max(6, r * .05):.0f}" '
+                   f'opacity="{.42 if dark else .5}" filter="url(#{uid}Ring)"/>' if ring else "")
+        body.append(
+            f'<g transform="translate({cx} {cy})"><g>'
+            f'<animateTransform attributeName="transform" type="translate" values="0 0;{dx} {dy};0 0" keyTimes="0;.5;1" '
+            f'calcMode="spline" keySplines="{ease}" dur="{wander}s" begin="{-i * 7}s" repeatCount="indefinite"/>'
+            f'<g opacity="{core}"><animate attributeName="opacity" values="{core};{core * .6:.2f};{core}" keyTimes="0;.5;1" '
+            f'calcMode="spline" keySplines="{ease}" dur="{breathe}s" begin="{-i * 3.1:.1f}s" repeatCount="indefinite"/>'
+            f'<g><animateTransform attributeName="transform" type="scale" {swell}/>'
+            f'<circle r="{r}" fill="url(#{uid}Glow)"/>{ring_el}</g></g></g></g>')
+    return defs, f'<g style="mix-blend-mode:{blend}">{"".join(body)}</g>'
