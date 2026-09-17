@@ -48,12 +48,14 @@ query($login: String!) {
       totalRepositoriesWithContributedCommits
       contributionCalendar {
         totalContributions
-        weeks { contributionDays { date contributionCount } }
+        weeks { contributionDays { date contributionCount contributionLevel } }
       }
     }
   }
 }
 """
+# github's own 5-step colouring (the same one Platane/snk reads), so the calendar and the snake agree
+LEVELS = {"NONE": 0, "FIRST_QUARTILE": 1, "SECOND_QUARTILE": 2, "THIRD_QUARTILE": 3, "FOURTH_QUARTILE": 4}
 
 
 def gql(query, variables):
@@ -128,7 +130,7 @@ def collect():
     total_lang = sum(langs.values()) or 1
     top = sorted(langs.items(), key=lambda kv: -kv[1])[:6]
     cc = u["contributionsCollection"]
-    weeks = [[(d["date"], d["contributionCount"]) for d in w["contributionDays"]]
+    weeks = [[(d["date"], d["contributionCount"], LEVELS[d["contributionLevel"]]) for d in w["contributionDays"]]
              for w in cc["contributionCalendar"]["weeks"]]
     days = [d for w in weeks for d in w]
     today = dt.date.fromisoformat(days[-1][0])   # the calendar ends on github's "today"
@@ -143,7 +145,7 @@ def collect():
         "contributed_to": cc["totalRepositoriesWithContributedCommits"],
         "followers": u["followers"]["totalCount"],
         "total": cc["contributionCalendar"]["totalContributions"],
-        "active_days": sum(1 for _, c in days if c > 0),
+        "active_days": sum(1 for _, c, _ in days if c > 0),
         "days_count": len(days),
         "weeks": weeks,
         "langs": [(n, s / total_lang) for n, s in top],
@@ -311,14 +313,6 @@ def calendar_card(theme, d):
     x0, y0, cell, gap = 48, 78, 16, 4
     step = cell + gap
     weeks = d["weeks"]
-    mx = max((c for w in weeks for _, c in w), default=0)
-
-    def level(c):
-        if c <= 0:
-            return 0
-        if mx <= 4:
-            return min(c, 4)
-        return min(4, 1 + int(3 * (c - 1) / max(mx - 1, 1) + 1e-9) if c < mx else 4)
 
     cells, labels = [], []
     last_month, last_label_x = None, -999
@@ -330,11 +324,11 @@ def calendar_card(theme, d):
                 labels.append(f'<text x="{x}" y="{y0-12}" class="m" font-size="11" fill="{p["muted"]}">{first.strftime("%b").lower()}</text>')
                 last_label_x = x
             last_month = first.month
-        for date, count in week:
+        for date, count, lv in week:
             di = dt.date.fromisoformat(date).weekday()  # mon=0 … sun=6
             di = (di + 1) % 7  # sun=0 … sat=6, like github
             y = y0 + di * step
-            cells.append(f'<rect class="c" x="{x}" y="{y}" width="{cell}" height="{cell}" rx="3.5" fill="{p["levels"][level(count)]}" style="animation-delay:{wi*0.018:.3f}s"><title>{date}: {count}</title></rect>')
+            cells.append(f'<rect class="c" x="{x}" y="{y}" width="{cell}" height="{cell}" rx="3.5" fill="{p["levels"][lv]}" style="animation-delay:{wi*0.018:.3f}s"><title>{date}: {count}</title></rect>')
     # language bar
     by, bh, bx0, bx1 = 238, 8, x0, W - x0
     bw = bx1 - bx0
