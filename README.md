@@ -10,8 +10,9 @@
 
 ### ✦ about
 
-- 📍 Based in **Beijing**
-- 🔭 Building side projects — see my [repositories](https://github.com/Shxiao101?tab=repositories)
+- 🎓 A sophomore in Computer Science and Technology
+- 📚 A member of [Byr Docs](https://github.com/byrdocs)
+- 🌸 She is Amano Tooko. As you can see, a literary girl.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg">
