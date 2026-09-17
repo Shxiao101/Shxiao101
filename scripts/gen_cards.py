@@ -16,6 +16,8 @@ import re
 import sys
 import urllib.request
 
+from paper import punch
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = os.path.join(ROOT, "dist")
@@ -392,7 +394,7 @@ def wrap_snake():
         if 'aria-label="contribution snake of' in raw:
             continue
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(snake_card(theme, raw))
+            fh.write(punch(snake_card(theme, raw), theme == "dark"))
         print(f"framed {path} ({os.path.getsize(path)//1024} KB)")
 
 
@@ -405,7 +407,7 @@ def main():
         for name, fn in (("stats", stats_panel), ("calendar", calendar_card)):
             path = os.path.join(OUT, f"{name}-{theme}.svg")
             with open(path, "w", encoding="utf-8") as fh:
-                fh.write(fn(theme, d))
+                fh.write(punch(fn(theme, d), theme == "dark"))
             print(f"wrote {path} ({os.path.getsize(path)//1024} KB)")
     print(json.dumps({k: v for k, v in d.items() if k != "weeks"}, ensure_ascii=False, default=str))
 

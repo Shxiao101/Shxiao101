@@ -7,6 +7,7 @@ Fonts come from scripts/fonts.json (Google Fonts subsets), the art from scripts/
 """
 import json, base64, io, os, random
 from fontTools.ttLib import TTFont
+from paper import punch
 
 # ---- text ----------------------------------------------------------------------------------------
 NAME = "Shxiao101"
@@ -136,7 +137,7 @@ def beams(p, xs, h, angle=24, seed=3):
             f'<animate attributeName="opacity" values="{o*.35:.2f};{o:.2f};{o*.35:.2f}" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></rect>')
     return f'<g filter="url(#blur18)" fill="{p["beam"]}">' + "".join(out) + "</g>"
 
-SPARKS = [(1128,76,9,3.1,0.0),(1150,300,8,2.6,0.8),(660,52,6,3.6,1.5),(1090,428,7,2.9,0.4),(498,64,7,3.3,2.1),(930,40,5,2.4,1.1),(1176,196,5,3.8,0.6)]
+SPARKS = [(1128,76,9,3.1,0.0),(1150,300,8,2.6,0.8),(660,52,6,3.6,1.5),(1090,428,7,2.9,0.4),(498,64,7,3.3,2.1),(930,40,5,2.4,1.1),(1136,196,5,3.8,0.6)]
 def sparkles(p):
     out = []
     for (x, y, s, dur, beg) in SPARKS:
@@ -156,8 +157,8 @@ def pills(p, x0=TX, y0=326):
             f'stroke="{p["pillStroke"]}" stroke-opacity=".75" stroke-width="1"/>'
             f'<text x="{x+14:.1f}" y="{y0+18.5}" class="pill" fill="{p["pillText"]}">{t}</text>')
         x += w + 10
-    if x - 10 > W - 40:
-        raise SystemExit(f"pills overflow the banner by {x - 10 - (W - 40):.0f}px; shorten PILLS")
+    if x - 10 > W - 52:           # stay clear of the binder holes on the right edge
+        raise SystemExit(f"pills overflow the banner by {x - 10 - (W - 52):.0f}px; shorten PILLS")
     return "\n".join(out)
 
 def hero(theme):
@@ -165,7 +166,7 @@ def hero(theme):
     css = "".join(fontface(k) for k in ("outfit", "iserif", "jbmono")) + BASE_CSS
     name_w = width("outfit", NAME, 92, letter_spacing=-2)
     cursor_x = TX + name_w + 12
-    if cursor_x + 7 > W - 40:
+    if cursor_x + 7 > W - 52:
         raise SystemExit(f"NAME is too wide for the banner ({name_w:.0f}px)")
     label = f"{NAME} — {TAGLINE}"
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">
@@ -314,6 +315,8 @@ def footer(theme):
 for theme in ("dark", "light"):
     for name, fn in (("hero", hero), ("divider", divider), ("footer", footer)):
         path = os.path.join(OUT, f"{name}-{theme}.svg")
+        # hero and footer art sits on the left, so their binder holes go down the right edge
+        svg = fn(theme) if name == "divider" else punch(fn(theme), theme == "dark", side="right")
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(fn(theme))
+            fh.write(svg)
         print(f"{path}: {os.path.getsize(path)/1024:.0f} KB")
