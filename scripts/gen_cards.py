@@ -17,6 +17,7 @@ import sys
 import urllib.request
 
 from paper import punch
+from sunlight import light_rays
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -273,6 +274,8 @@ def stats_panel(theme, d):
         f'<g transform="translate({x} {y})"><path d="{star_path(r)}" fill="{p["spark"]}">'
         f'<animate attributeName="opacity" values="0.15;1;0.15" dur="{dur}s" begin="{beg}s" repeatCount="indefinite"/></path></g>'
         for x, y, r, dur, beg in [(640, 58, 7, 3.2, 0), (604, 236, 5, 2.7, 1.1), (1150, 430, 8, 3.6, .5), (700, 448, 5, 2.9, 1.8)])
+    # her window is on the right, so the rays mirror the hero's: lean down-left, drift leftwards over the numbers
+    sun_defs, sun = light_rays("sunS", 30, 700, H, -26, -150, theme == "dark", seed=9)
     today = d["today"]
     updated = f"updated {today.strftime('%b').lower()} {today.day}, {today.year}"
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="github stats of {LOGIN}">
@@ -288,6 +291,7 @@ def stats_panel(theme, d):
 <filter id="pglow" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="14"/></filter>
 <filter id="ptint" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="table" tableValues="{p['toneR']}"/><feFuncG type="table" tableValues="{p['toneG']}"/><feFuncB type="table" tableValues="{p['toneB']}"/></feComponentTransfer></filter>
 <filter id="pgrain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+{sun_defs}
 </defs>
 <g clip-path="url(#pcard)">
 <rect width="{W}" height="{H}" fill="url(#pbg)"/>
@@ -297,6 +301,7 @@ def stats_panel(theme, d):
 <ellipse cx="820" cy="300" rx="240" ry="220" fill="{p['blobC']}" opacity="{p['blobCo']}"><animate attributeName="rx" values="240;290;240" dur="15s" repeatCount="indefinite"/></ellipse>
 </g>
 <image href="data:image/jpeg;base64,{STATS_IMG}" x="{ix}" y="0" width="{IW}" height="{H}" preserveAspectRatio="xMidYMid slice" mask="url(#pmask)" filter="url(#ptint)"/>
+{sun}
 {sparks}
 <rect width="{W}" height="{H}" filter="url(#pgrain)" opacity="{p['grainO']}"/>
 <text x="56" y="84" class="m" font-size="13" letter-spacing="2.5" fill="{p['accent']}">github stats</text>

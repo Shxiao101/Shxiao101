@@ -9,6 +9,7 @@ import json, base64, io, os, random
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
 from paper import punch
+from sunlight import light_rays
 
 # ---- text ----------------------------------------------------------------------------------------
 NAME = "Shxiao101"
@@ -235,6 +236,8 @@ def hero(theme):
             f'<set attributeName="width" to="7" begin="{hop:.2f}s" fill="freeze"/><set attributeName="height" to="64" begin="{hop:.2f}s" fill="freeze"/>')
     cur += "".join(f'<set attributeName="x" to="{TX + w + 12:.1f}" begin="{t:.2f}s" fill="freeze"/>' for t, w in typed)
     cur += f'<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" begin="{name_end + .15:.2f}s" repeatCount="indefinite"/>'
+    # light comes from the girl's window on the left: rays lean down-right and drift rightwards over the text side
+    sun_defs, sun = light_rays("sunH", 540, 1160, H, 26, 150, theme == "dark", seed=4)
     clips = (reveal("typeGreet", TX, 96, 30, greet_w, greet, 4, 0)
              + reveal("typeName", TX, 128, 120, name_w, typed, 10, 0)
              + reveal("typeGlow", TX, 70, 220, name_w, typed, 60, 12))
@@ -270,6 +273,7 @@ def hero(theme):
 <filter id="tint" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="{p['imgTint']}"/></filter>
 {GRAIN}
 {clips}
+{sun_defs}
 </defs>
 <g clip-path="url(#card)">
 <rect width="{W}" height="{H}" fill="url(#bg)"/>
@@ -281,6 +285,7 @@ def hero(theme):
 </g>
 {beams(p, (560, 720, 905, 1060), H)}
 <image href="data:image/jpeg;base64,{hero_b64}" x="0" y="0" width="{IMG_W}" height="{H}" preserveAspectRatio="xMidYMid slice" mask="url(#mImg)" filter="url(#tint)"/>
+{sun}
 {dust(p, W, H)}
 {sparkles(p)}
 <rect width="{W}" height="{H}" filter="url(#grain)" opacity="{p['grainO']}"/>
