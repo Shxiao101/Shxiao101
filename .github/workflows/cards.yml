@@ -10,6 +10,10 @@ on:
       - ".github/workflows/cards.yml"
       - "scripts/gen_cards.py"
       - "scripts/stats.jpg"
+      - "scripts/fonts.json"
+      - "scripts/maple.py"
+      - "scripts/paper.py"
+      - "scripts/sunlight.py"
 
 permissions:
   contents: write
@@ -25,7 +29,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: generate stats + calendar cards
+      - name: generate stats, calendar, bookshelf and contents cards
         run: python scripts/gen_cards.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

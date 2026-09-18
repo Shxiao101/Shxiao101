@@ -20,6 +20,18 @@
   <img src="assets/divider-dark.svg" alt="" width="100%">
 </picture>
 
+### ✦ Contents
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-light.svg">
+  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-dark.svg" alt="contents: my repositories, and the projects that merged my pull requests" width="100%">
+</picture>
+
+</div>
+
 ### ✦ stats
 
 <div align="center">
@@ -28,6 +40,12 @@
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/stats-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/stats-light.svg">
   <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/stats-dark.svg" alt="github stats and contribution streak" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/shelf-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/shelf-light.svg">
+  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/shelf-dark.svg" alt="languages as a bookshelf" width="100%">
 </picture>
 
 <picture>

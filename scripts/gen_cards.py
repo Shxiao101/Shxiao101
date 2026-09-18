@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
-"""Render the profile's stats panel and contribution calendar as themed SVGs.
+"""Render the profile's stats panel, contribution calendar, bookshelf and contents page as themed SVGs.
 
-Runs in GitHub Actions (see .github/workflows/cards.yml) and writes
-dist/stats-{dark,light}.svg and dist/calendar-{dark,light}.svg.
+Runs in GitHub Actions (see .github/workflows/cards.yml) and writes dist/{stats,calendar,shelf,toc}-{dark,light}.svg.
 `gen_cards.py snake` instead frames the dist/snake-{dark,light}.svg that Platane/snk produced
 in the same card as the calendar (no token needed).
-Only the standard library is used. Fonts are embedded from scripts/fonts.json,
-the panel illustration from scripts/stats.jpg (see prep_images.py).
+Only the standard library is used. Fonts are embedded from scripts/fonts.json (which also carries their advance
+widths, for measuring text), the panel illustration from scripts/stats.jpg (see prep_images.py).
+Only public repositories are counted, so a local run with a personal token matches the Actions run.
 """
 import base64
 import datetime as dt
+import html
 import json
 import os
+import random
 import re
 import sys
+import unicodedata
 import urllib.request
 
+from maple import LEAF_COLORS, leaf_def
 from paper import punch
 from sunlight import light_rays
 
@@ -34,12 +38,12 @@ query($login: String!) {
     followers { totalCount }
     pullRequests { totalCount }
     issues { totalCount }
-    repositories(first: 100, ownerAffiliations: OWNER, isFork: false, orderBy: {field: STARGAZERS, direction: DESC}) {
+    repositories(first: 100, ownerAffiliations: OWNER, isFork: false, privacy: PUBLIC, orderBy: {field: STARGAZERS, direction: DESC}) {
       totalCount
       nodes {
-        stargazerCount
+        name description pushedAt stargazerCount
         languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
-          edges { size node { name } }
+          edges { size node { name color } }
         }
       }
     }
@@ -118,18 +122,57 @@ def streaks(days, today):
     return {"total": sum(c for _, c in days), "current": current, "longest": longest, "first": first}
 
 
+PR_QUERY = """
+query($login: String!, $after: String) {
+  user(login: $login) {
+    pullRequests(states: MERGED, first: 100, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { repository { name isPrivate stargazerCount owner { login } primaryLanguage { name } } }
+    }
+  }
+}
+"""
+
+
+def merged_upstream():
+    """Other people's public repositories that merged my pull requests: most merged first, then most starred."""
+    groups, after = {}, None
+    for _ in range(10):
+        page = gql(PR_QUERY, {"login": LOGIN, "after": after})["user"]["pullRequests"]
+        for n in page["nodes"]:
+            r = n["repository"]
+            if not r or r["isPrivate"] or r["owner"]["login"].lower() == LOGIN.lower():
+                continue
+            g = groups.setdefault((r["owner"]["login"], r["name"]), {
+                "owner": r["owner"]["login"], "name": r["name"], "stars": r["stargazerCount"],
+                "lang": (r["primaryLanguage"] or {}).get("name"), "count": 0})
+            g["count"] += 1
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        after = page["pageInfo"]["endCursor"]
+    return sorted(groups.values(), key=lambda g: (-g["count"], -g["stars"], g["name"].lower()))
+
+
+SKIP_LANGS = {"XSLT", "Makefile", "DTrace", "HTML", "Shell", "Batchfile", "CMake"}
+
+
 def collect():
     u = gql(QUERY, {"login": LOGIN})["user"]
     repos = u["repositories"]["nodes"]
-    skip = {"XSLT", "Makefile", "DTrace", "HTML", "Shell", "Batchfile", "CMake"}
-    langs = {}
+    langs, colors = {}, {}
     for r in repos:
         for e in r["languages"]["edges"]:
-            if e["node"]["name"] in skip:
+            name = e["node"]["name"]
+            if name in SKIP_LANGS:
                 continue
-            langs[e["node"]["name"]] = langs.get(e["node"]["name"], 0) + e["size"]
+            langs[name] = langs.get(name, 0) + e["size"]
+            colors[name] = e["node"]["color"]
     total_lang = sum(langs.values()) or 1
-    top = sorted(langs.items(), key=lambda kv: -kv[1])[:6]
+    # the six biggest, leaving out slivers under half a percent
+    top = [(n, s / total_lang, colors[n]) for n, s in sorted(langs.items(), key=lambda kv: -kv[1])
+           if s / total_lang >= .005][:6]
+    # my own repositories, latest first; the profile repository itself is where the reader already is
+    own = sorted((r for r in repos if r["name"].lower() != LOGIN.lower()), key=lambda r: r["pushedAt"], reverse=True)
     cc = u["contributionsCollection"]
     weeks = [[(d["date"], d["contributionCount"], LEVELS[d["contributionLevel"]]) for d in w["contributionDays"]]
              for w in cc["contributionCalendar"]["weeks"]]
@@ -149,7 +192,12 @@ def collect():
         "active_days": sum(1 for _, c, _ in days if c > 0),
         "days_count": len(days),
         "weeks": weeks,
-        "langs": [(n, s / total_lang) for n, s in top],
+        "langs": top,
+        "own": [{"name": r["name"], "pushed": dt.date.fromisoformat(r["pushedAt"][:10]),
+                 "desc": " ".join((r["description"] or "").split()),
+                 "langs": [e["node"]["name"] for e in r["languages"]["edges"] if e["node"]["name"] not in SKIP_LANGS]}
+                for r in own],
+        "upstream": merged_upstream(),
     }
 
 
@@ -163,7 +211,12 @@ PAL = {
         grad0="#ffffff", grad1="#e4cf5a",
         pbg0="#1b180e", pbg1="#121210", pbg2="#0d1413", frame="#e8d98a", frameO=".20", grainO=".045",
         blobA="#c9a227", blobAo=".26", blobB="#2f6b62", blobBo=".34", blobC="#8b6fb0", blobCo=".22",
-        spark="#fff2b0", toneR="0 .5 .9", toneG="0 .46 .82", toneB="0 .4 .7"),
+        spark="#fff2b0", toneR="0 .5 .9", toneG="0 .46 .82", toneB="0 .4 .7",
+        # bookshelf and contents page
+        wood="#6b4a2a", wood0="#553820", wood1="#3a2613", woodLine="#1e1208", wallShade="#000", wallShadeO=".55",
+        bookShade="#000", bookShadeO=".55", clothDim=".2", foil="#ecd27a", foilDark="#2a1d0a", paperLabel="#e9dcb8",
+        vase0="#7aa593", vase1="#3c5c50", metal0="#8a826c", metal1="#4a453a", stem="#8a5a32",
+        ribbon0="#e0552a", ribbon1="#9c3a18", ribbonShadeO=".35", gutter="#000", gutterO=".42"),
     "light": dict(
         bg0="#fffdf3", bg1="#f8f2d8", border="#e6dcae",
         title="#3b340c", label="#6f6434", value="#3b340c", muted="#8f8454",
@@ -173,7 +226,11 @@ PAL = {
         grad0="#3b340c", grad1="#a8841a",
         pbg0="#faf4d9", pbg1="#fffdf3", pbg2="#f0f2df", frame="#8a7a1a", frameO=".18", grainO=".03",
         blobA="#f2e173", blobAo=".50", blobB="#d8e3a4", blobBo=".55", blobC="#e6dcf5", blobCo=".70",
-        spark="#b8921c", toneR="0 1", toneG="0 1", toneB="0 1"),
+        spark="#b8921c", toneR="0 1", toneG="0 1", toneB="0 1",
+        wood="#dcb682", wood0="#c0915a", wood1="#9a6a38", woodLine="#6b4520", wallShade="#7a5a2a", wallShadeO=".22",
+        bookShade="#5a4520", bookShadeO=".22", clothDim="0", foil="#f3d98a", foilDark="#3a2a10", paperLabel="#fbf5e2",
+        vase0="#b3d0c1", vase1="#6f9483", metal0="#c2b9a2", metal1="#7d7462", stem="#7a5230",
+        ribbon0="#d9481c", ribbon1="#a82a10", ribbonShadeO=".16", gutter="#6b5a2a", gutterO=".16"),
 }
 
 
@@ -206,6 +263,57 @@ ICON = {
 
 def fmt(n):
     return f"{n/1000:.1f}k" if n >= 10000 else f"{n:,}"
+
+
+def short(n):
+    return f"{n/1000:.1f}k" if n >= 1000 else str(n)
+
+
+def esc(s):
+    return html.escape(s, quote=True)
+
+
+def text_width(key, text, size, spacing=0.0):
+    """Advance width in px from the tables in fonts.json (printable ASCII); anything else falls back to a system
+    font, so guess: 1em for wide CJK characters, .6em otherwise."""
+    adv = FONTS[key]["adv"]
+    w = 0.0
+    for ch in text:
+        o = ord(ch)
+        if 32 <= o < 127:
+            w += adv[o - 32] / 1000 * size
+        else:
+            w += size if unicodedata.east_asian_width(ch) in "WF" else size * .6
+        w += spacing
+    return w
+
+
+def clip_text(key, text, size, max_w):
+    """`text`, cut short with an ellipsis if it is wider than max_w."""
+    if text_width(key, text, size) <= max_w:
+        return text
+    while text and text_width(key, text + "...", size) > max_w:
+        text = text[:-1]
+    return text.rstrip(" ,.;:-，。、") + "..."
+
+
+def rgb(c):
+    c = c.lstrip("#")
+    if len(c) == 3:
+        c = "".join(ch * 2 for ch in c)
+    return [int(c[i:i + 2], 16) for i in (0, 2, 4)]
+
+
+def mix(a, b, t):
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(rgb(a), rgb(b)))
+
+
+def luma(c):
+    r, g, b = (v / 255 for v in rgb(c))
+    return .2126 * r + .7152 * g + .0722 * b
+
+
+EASE = ".45 0 .55 1"
 
 
 def card_frame(p, w, h, gid):
@@ -314,7 +422,7 @@ def stats_panel(theme, d):
 
 def calendar_card(theme, d):
     p = PAL[theme]
-    W, H = 1200, 280
+    W, H = 1200, 240
     x0, y0, cell, gap = 48, 78, 16, 4
     step = cell + gap
     weeks = d["weeks"]
@@ -334,30 +442,266 @@ def calendar_card(theme, d):
             di = (di + 1) % 7  # sun=0 … sat=6, like github
             y = y0 + di * step
             cells.append(f'<rect class="c" x="{x}" y="{y}" width="{cell}" height="{cell}" rx="3.5" fill="{p["levels"][lv]}" style="animation-delay:{wi*0.018:.3f}s"><title>{date}: {count}</title></rect>')
-    # language bar
-    by, bh, bx0, bx1 = 238, 8, x0, W - x0
-    bw = bx1 - bx0
-    segs, legend = [], []
-    x = bx0
-    lx = bx0
-    for i, (name, share) in enumerate(d["langs"]):
-        w = bw * share
-        col = p["langs"][i % len(p["langs"])]
-        segs.append(f'<rect x="{x:.1f}" y="{by}" width="{max(w-2,0):.1f}" height="{bh}" fill="{col}"/>')
-        x += w
-        txt = f"{name} {share*100:.1f}%"
-        legend.append(f'<circle cx="{lx+4}" cy="{by+26}" r="4" fill="{col}"/>'
-                      f'<text x="{lx+14}" y="{by+30}" class="m" font-size="11" fill="{p["label"]}">{txt}</text>')
-        lx += 14 + len(txt) * 6.6 + 22
-    bar = (f'<clipPath id="bc"><rect x="{bx0}" y="{by}" width="{bw}" height="{bh}" rx="4"/></clipPath>'
-           f'<g clip-path="url(#bc)"><rect x="{bx0}" y="{by}" width="{bw}" height="{bh}" fill="{p["track"]}"/>'
-           f'<g class="b">{"".join(segs)}</g></g>' + "".join(legend))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="contribution calendar of {LOGIN}">'
             + card_frame(p, W, H, "C")
             + f'<g transform="translate(58 34)" fill="{p["accent"]}">{ICON["star"]}</g>'
             + f'<text x="76" y="40" class="t" font-size="19" fill="url(#tgC)">contributions</text>'
             + f'<text x="{W-x0}" y="40" class="m" font-size="12" text-anchor="end" fill="{p["label"]}">{fmt(d["total"])} contributions · {d["active_days"]} active days · last 12 months</text>'
-            + "".join(labels) + "".join(cells) + bar + "</svg>")
+            + "".join(labels) + "".join(cells) + "</svg>")
+
+
+SHELF_Y = 258          # top of the shelf board, where the books stand
+
+
+def spine_trim(style, x, y, w, h, foil, p, ornament):
+    """Gilt and label work on a spine; every volume of one language shares a style, like a set."""
+    def rule(yy, hh=1.4, o=.85):
+        return f'<rect x="{x + 2.5:.1f}" y="{yy:.1f}" width="{w - 5:.1f}" height="{hh}" fill="{foil}" opacity="{o}"/>'
+    foot = y + h
+    # a small gilt lozenge mid-spine where there's no title
+    lozenge = (f'<rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="translate({x + w / 2:.1f} {y + h * .45:.1f}) rotate(45)" '
+               f'fill="{foil}" opacity=".7"/>' if ornament else "")
+    if style == 0:        # double gilt rules at head and foot
+        return rule(y + 11) + rule(y + 15.5) + rule(foot - 19) + rule(foot - 14.5) + lozenge
+    if style == 1:        # dark leather bands edged in gilt
+        return lozenge + "".join(f'<rect x="{x:.1f}" y="{yy:.1f}" width="{w:.1f}" height="13" fill="#000" opacity=".24"/>'
+                                 + rule(yy - 1.6, 1.2, .8) + rule(yy + 13.4, 1.2, .8) for yy in (y + 9, foot - 24))
+    # a library label near the foot, one broad gilt rule at the head
+    return (rule(y + 12, 2.2) + f'<rect x="{x + 4:.1f}" y="{foot - 37:.1f}" width="{w - 8:.1f}" height="17" rx="1.5" fill="{p["paperLabel"]}" opacity=".92"/>'
+            f'<rect x="{x + 7:.1f}" y="{foot - 29.5:.1f}" width="{w - 14:.1f}" height="1.2" fill="#5a4a2a" opacity=".45"/>')
+
+
+def vase(p, cx, base):
+    """A celadon bud vase with a sprig of maple that sways a little, and now and then drops a leaf on the shelf."""
+    rnd = random.Random(3)
+    mouth = base - 54
+    stems = ["M0,4 C-3,-22 -14,-44 -30,-66", "M1,4 C4,-26 10,-52 20,-86", "M0,4 C2,-14 0,-28 8,-44"]
+    # (x, y, scale, angle): at the stem tips and along the stems, relative to the mouth
+    spots = [(-30, -66, 1.25, -35), (-13, -37, .9, -62), (20, -86, 1.3, 14), (9, -52, .95, 58), (8, -44, 1.0, 30)]
+    leaves = []
+    for x, y, s, a in spots:
+        c = rnd.choice(LEAF_COLORS)
+        dur, beg = rnd.uniform(3.5, 5.5), -rnd.uniform(0, 5)
+        leaves.append(
+            f'<g transform="translate({x} {y}) rotate({a})"><g>'
+            f'<animateTransform attributeName="transform" type="rotate" values="-7;7;-7" keyTimes="0;.5;1" calcMode="spline" '
+            f'keySplines="{EASE};{EASE}" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
+            f'<use href="#vleaf" transform="scale({s})" fill="{c}" stroke="{c}" stroke-width=".8" stroke-linejoin="round"/></g></g>')
+    stems = "".join(f'<path d="{s}"/>' for s in stems)
+    sprig = (f'<g transform="translate({cx} {mouth})"><g>'
+             f'<animateTransform attributeName="transform" type="rotate" values="-1.6;1.6;-1.6" keyTimes="0;.5;1" calcMode="spline" '
+             f'keySplines="{EASE};{EASE}" dur="7s" repeatCount="indefinite"/>'
+             f'<g fill="none" stroke="{p["stem"]}" stroke-width="1.6" stroke-linecap="round">{stems}</g>'
+             f'{"".join(leaves)}</g></g>')
+    body = (f'<g transform="translate({cx} {base})">'
+            f'<ellipse cx="5" cy="0" rx="22" ry="3" fill="#000" opacity=".2"/>'
+            f'<path d="M-13,0 C-24,-6 -25,-30 -12,-40 C-8,-44 -7,-48 -8,-54 L8,-54 C7,-48 8,-44 12,-40 C25,-30 24,-6 13,0 Z" fill="url(#vaseG)"/>'
+            f'<ellipse cx="0" cy="-54" rx="8.5" ry="2.2" fill="{p["vase1"]}"/>'
+            f'<path d="M-15,-31 C-17,-21 -15,-11 -10,-5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="2.4" stroke-linecap="round"/></g>')
+    # the falling leaf: lets go of the sprig, flutters down, lies on the board a moment and fades
+    kt = "0;.1;.2;.3;.4;1"
+    spl = f'keyTimes="{kt}" calcMode="spline" keySplines="{";".join([EASE] * 5)}" dur="18s" begin="6s" repeatCount="indefinite"'
+    c = LEAF_COLORS[1]
+    fall = (f'<g transform="translate({cx} {mouth})"><g opacity="0">'
+            f'<animate attributeName="opacity" values="0;1;1;1;0;0" keyTimes="0;.03;.4;.52;.6;1" dur="18s" begin="6s" repeatCount="indefinite"/>'
+            f'<animateTransform attributeName="transform" type="translate" values="-26 -60;-10 -32;-30 -4;6 26;30 {base - 3 - mouth};30 {base - 3 - mouth}" {spl}/>'
+            f'<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 1;1 1;1 .35;1 .35" {spl}/>'
+            f'<g><animateTransform attributeName="transform" type="rotate" values="0;50;-25;60;95;95" {spl}/>'
+            f'<use href="#vleaf" transform="scale(1.1)" fill="{c}" stroke="{c}" stroke-width=".8"/></g></g></g></g>')
+    return sprig + body, fall
+
+
+def shelf_card(theme, d):
+    """Languages as a shelf of books: each language is a run of matching volumes, as many as its share of the code
+    (one at least), titled on the first spine.  A bookend and a vase of maple close the row."""
+    p = PAL[theme]
+    W, H = 1200, 336
+    rnd = random.Random(7)
+    langs = d["langs"]
+    N, X0, X1 = 34, 60, 1046
+    raw = [s * N for _, s, _ in langs]
+    counts = [max(1, int(r)) for r in raw]
+    while langs and sum(counts) < N:          # largest remainder
+        i = max(range(len(raw)), key=lambda i: raw[i] - counts[i])
+        counts[i] += 1
+    while sum(counts) > N:
+        i = max((i for i in range(len(raw)) if counts[i] > 1), key=lambda i: counts[i] - raw[i])
+        counts[i] -= 1
+    vols = []
+    for si, ((name, _, color), n) in enumerate(zip(langs, counts)):
+        cloth = mix(color or p["langs"][si % len(p["langs"])], "#6b4a2b", .28)   # dyed book cloth, not screen colour
+        cloth = mix(cloth, "#000", float(p["clothDim"]))
+        bw, bh = rnd.uniform(24, 31), rnd.uniform(146, 172)
+        for k in range(n):   # a set, but no two volumes quite alike: worn, faded, a little taller or thinner
+            vols.append({"si": si, "name": name, "first": k == 0, "w": bw * rnd.uniform(.84, 1.16),
+                         "h": min(184, bh + rnd.uniform(-10, 10)), "cloth": cloth,
+                         "c": mix(cloth, rnd.choice(("#000", "#fff")), rnd.uniform(0, .11))})
+    gap = 1.2
+    k = (X1 - X0 - gap * (len(vols) - 1)) / max(sum(v["w"] for v in vols), 1)
+    pulled = set(rnd.sample(range(len(vols)), min(3, len(vols))))
+    books, shadows, x = [], [], X0
+    for i, v in enumerate(vols):
+        w, h = v["w"] * k, v["h"]
+        y = SHELF_Y - h
+        foil = p["foil"] if luma(v["c"]) < .5 else p["foilDark"]
+        title = ""
+        if v["first"] and w >= 18 and text_width("outfit", v["name"], 11, .6) <= h - 70:
+            # spine titles read top to bottom; rotated, the glyphs sit to the right of the baseline
+            title = (f'<text transform="translate({x + w / 2 - 4:.1f} {y + 32:.1f}) rotate(90)" class="t" font-size="11" '
+                     f'letter-spacing=".6" fill="{foil}">{esc(v["name"])}</text>')
+        body = (f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2" fill="{v["c"]}"/>'
+                + spine_trim(v["si"] % 3, x, y, w, h, foil, p, not title) + title
+                + f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2" fill="url(#spine)"/>')
+        if i in pulled:   # now and then somebody lifts a book to look at it, and puts it back
+            dur, beg = rnd.uniform(16, 24), rnd.uniform(3, 14)
+            body = (f'<g><animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 -18;0 -18;0 0;0 0" '
+                    f'keyTimes="0;.4;.47;.58;.65;1" calcMode="spline" keySplines="0 0 1 1;{EASE};0 0 1 1;{EASE};0 0 1 1" '
+                    f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>{body}</g>')
+        books.append(f'<g class="bk" style="animation-delay:{i * .035:.3f}s"><title>{esc(v["name"])}</title>{body}</g>')
+        shadows.append(f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/>')
+        x += w + gap
+    landed = len(vols) * .035 + .5
+    grain = "".join(f'<path d="M44,{SHELF_Y + yy} C{300 + 80 * j},{SHELF_Y + yy - 2} {700 - 60 * j},{SHELF_Y + yy + 2.5} {W - 44},{SHELF_Y + yy}" '
+                    f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".22" stroke-width=".8"/>' for j, yy in enumerate((4.5, 8, 11.5)))
+    plank = (f'<rect x="44" y="{SHELF_Y + 15}" width="{W - 88}" height="30" fill="url(#wall)"/>'
+             f'<rect x="44" y="{SHELF_Y - 4}" width="{W - 88}" height="5" fill="{p["wood"]}"/>'
+             f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="15" rx="2" fill="url(#wood)"/>{grain}'
+             f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="1.2" fill="#fff" opacity=".2"/>')
+    bx = X1 + 7
+    bookend = (f'<rect x="{bx}" y="{SHELF_Y - 70}" width="8" height="70" rx="2.5" fill="url(#metal)"/>'
+               f'<rect x="{bx + 1.6}" y="{SHELF_Y - 67}" width="1.3" height="62" fill="#fff" opacity=".25"/>')
+    flowers, falling = vase(p, 1112, SHELF_Y - 2)
+    legend, lx = [], 60
+    for si, (name, share, _) in enumerate(langs):
+        col = next(v["cloth"] for v in vols if v["si"] == si)
+        pct = f"{share * 100:.1f}%"
+        legend.append(f'<rect x="{lx}" y="{SHELF_Y + 45}" width="8" height="13" rx="1.5" fill="{col}"/>'
+                      f'<rect x="{lx + 1}" y="{SHELF_Y + 48}" width="6" height="1.2" fill="{p["foil"]}" opacity=".8"/>'
+                      f'<text x="{lx + 15}" y="{SHELF_Y + 56}" class="m" font-size="12"><tspan fill="{p["label"]}">{esc(name)}</tspan>'
+                      f'<tspan fill="{p["muted"]}" dx="7">{pct}</tspan></text>')
+        lx += 15 + text_width("jbmono", name, 12) + 7 + text_width("jbmono", pct, 12) + 30
+    if not vols:
+        books = [f'<text x="{W / 2}" y="{SHELF_Y - 60}" text-anchor="middle" class="m" font-size="13" fill="{p["muted"]}">no books on the shelf yet</text>']
+    css = ("@keyframes drop{0%{opacity:0;transform:translateY(-30px)}70%{opacity:1;transform:translateY(2px)}100%{opacity:1;transform:none}}"
+           ".bk{animation:drop .65s cubic-bezier(.3,.7,.4,1) both}"
+           "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}")
+    note = f"{len(langs)} languages · {d['repos']} public repos · by size of code"
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="languages of {LOGIN} as a bookshelf">'
+            + card_frame(p, W, H, "S")
+            + f'<defs><style><![CDATA[{css}]]></style>{leaf_def("vleaf")}'
+            f'<linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".32"/>'
+            f'<stop offset=".14" stop-color="#000" stop-opacity=".04"/><stop offset=".36" stop-color="#fff" stop-opacity=".15"/>'
+            f'<stop offset=".6" stop-color="#fff" stop-opacity="0"/><stop offset=".86" stop-color="#000" stop-opacity=".12"/>'
+            f'<stop offset="1" stop-color="#000" stop-opacity=".36"/></linearGradient>'
+            f'<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["wood0"]}"/><stop offset="1" stop-color="{p["wood1"]}"/></linearGradient>'
+            f'<linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["wallShade"]}" stop-opacity="{p["wallShadeO"]}"/>'
+            f'<stop offset="1" stop-color="{p["wallShade"]}" stop-opacity="0"/></linearGradient>'
+            f'<linearGradient id="metal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["metal0"]}"/><stop offset="1" stop-color="{p["metal1"]}"/></linearGradient>'
+            f'<linearGradient id="vaseG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["vase0"]}"/><stop offset=".4" stop-color="{p["vase0"]}"/>'
+            f'<stop offset="1" stop-color="{p["vase1"]}"/></linearGradient>'
+            f'<filter id="bshade" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="3"/></filter></defs>'
+            + f'<g transform="translate(58 34)" fill="{p["accent"]}">{ICON["star"]}</g>'
+            + f'<text x="76" y="40" class="t" font-size="19" fill="url(#tgS)">bookshelf</text>'
+            + f'<text x="{W - 48}" y="40" class="m" font-size="12" text-anchor="end" fill="{p["label"]}">{note}</text>'
+            + f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="{p["bookShade"]}" opacity="{p["bookShadeO"]}" filter="url(#bshade)">{"".join(shadows)}</g></g>'
+            + "".join(books) + flowers + bookend + plank + falling + "".join(legend) + "</svg>")
+
+
+ROMAN = "i ii iii iv v vi vii viii ix x".split()
+
+
+def toc_entry(p, x0, x1, y, num, name, value, sub, t):
+    """One contents line: numeral, title, dot leaders running out to the value, and a note underneath.
+    Fades in at t; the leaders' base length is the finished line, the set at 0s shortens it until they run out."""
+    nx = x0 + 36
+    vw = text_width("jbmono", value, 13)
+    name = clip_text("outfit", name, 21, x1 - vw - 40 - nx)
+    nw = text_width("outfit", name, 21)
+    lx0, lx1 = nx + nw + 10, x1 - vw - 10
+    sub = clip_text("jbmono", sub, 11.5, x1 - nx)
+    leader = ""
+    if lx1 > lx0 + 8:
+        leader = (f'<line x1="{lx0:.1f}" y1="{y - 5}" x2="{lx1:.1f}" y2="{y - 5}" stroke="{p["muted"]}" stroke-width="1.8" '
+                  f'stroke-linecap="round" stroke-dasharray="0 7"><set attributeName="x2" to="{lx0:.1f}" begin="0s" fill="freeze"/>'
+                  f'<animate attributeName="x2" from="{lx0:.1f}" to="{lx1:.1f}" begin="{t + .25:.2f}s" dur=".7s" fill="freeze"/></line>')
+    return (f'<g class="e" style="animation-delay:{t:.2f}s">'
+            f'<text x="{x0 + 24}" y="{y}" text-anchor="end" class="h" font-size="28" fill="{p["accent"]}">{ROMAN[num]}.</text>'
+            f'<text x="{nx}" y="{y}" class="t" font-size="21" fill="{p["value"]}">{esc(name)}</text>'
+            f'<text x="{x1}" y="{y}" class="m" font-size="13" text-anchor="end" fill="{p["label"]}">{esc(value)}</text>'
+            f'<text x="{nx}" y="{y + 21}" class="m" font-size="11.5" fill="{p["muted"]}">{esc(sub)}</text></g>' + leader, nx, nw)
+
+
+def toc_card(theme, d):
+    """The repositories as a book's contents: an open spread with my own repositories on the left page and, on the
+    right, the marginalia - other people's projects that merged my pull requests.  A ribbon lies in the gutter."""
+    p = PAL[theme]
+    W = 1200
+    today = d["today"]
+
+    def when(day):
+        m = day.strftime("%b").lower()
+        return f"{m} {day.day}" if day.year == today.year else f"{m} {day.year}"
+
+    left = []
+    for r in d["own"][:4]:
+        about = [r["langs"][0], r["desc"]] if r["desc"] and r["langs"] else [r["desc"] or ", ".join(r["langs"][:3])]
+        left.append((r["name"], when(r["pushed"]), "  ·  ".join(a for a in about if a)))
+    right, per_owner = [], {}
+    for g in d["upstream"]:   # two repositories per owner at most, so one busy organisation doesn't fill the page
+        if len(right) < 4 and per_owner.get(g["owner"], 0) < 2:
+            per_owner[g["owner"]] = per_owner.get(g["owner"], 0) + 1
+            right.append((g["name"], str(g["count"]),
+                          "  ·  ".join([g["owner"], f"{short(g['stars'])} stars"] + ([g["lang"]] if g["lang"] else []))))
+    Y0, PITCH = 168, 58
+    rows = max(len(left), len(right), 1)
+    H = Y0 + (rows - 1) * PITCH + 90
+    pages = [(96, 552, "Contents", "part i  ·  my repositories", "last pushed", left, 0),
+             (648, 1104, "Marginalia", "part ii  ·  merged upstream", "merged prs", right, len(left))]
+    body, n, latest = [], 0, None
+    for pi, (x0, x1, title, part, col, entries, first) in enumerate(pages):
+        body.append(f'<text x="{x0}" y="84" class="h" font-size="46" fill="url(#tgT)">{title}</text>'
+                    f'<text x="{x0}" y="118" class="m" font-size="12" letter-spacing="2" fill="{p["accent"]}">{part}</text>'
+                    f'<text x="{x1}" y="118" class="m" font-size="11" text-anchor="end" fill="{p["muted"]}">{col}</text>'
+                    f'<rect x="{x0}" y="131" width="{x1 - x0}" height="1.2" fill="url(#rule)"/>'
+                    f'<text x="{(x0 + x1) / 2}" y="{H - 26}" text-anchor="middle" class="h" font-size="20" fill="{p["muted"]}">~ {pi + 1} ~</text>')
+        if not entries:
+            body.append(f'<text x="{x0 + 36}" y="{Y0}" class="h" font-size="24" fill="{p["muted"]}">blank pages, for now</text>')
+        for j, (name, value, sub) in enumerate(entries):
+            y = Y0 + j * PITCH
+            entry, nx, nw = toc_entry(p, x0, x1, y, first + j, name, value, sub, .3 + n * .18)
+            body.append(entry)
+            n += 1
+            if pi == 0 and j == 0:
+                latest = (nx, nw, y)
+    underline = ""
+    if latest:   # a red-pencil underline under the latest chapter, once the pages are written
+        nx, nw, y = latest
+        underline = (f'<path d="M{nx - 3:.1f},{y + 7} C{nx + nw * .3:.1f},{y + 3} {nx + nw * .65:.1f},{y + 10} {nx + nw + 5:.1f},{y + 4.5}" '
+                     f'fill="none" stroke="{p["ribbon0"]}" stroke-width="2.4" stroke-linecap="round" opacity=".85" pathLength="1" stroke-dasharray="1 1">'
+                     f'<set attributeName="stroke-dashoffset" to="1" begin="0s" fill="freeze"/>'
+                     f'<animate attributeName="stroke-dashoffset" from="1" to="0" begin="{.3 + n * .18 + .5:.2f}s" dur=".6s" fill="freeze"/></path>')
+    gut = "".join(f'<stop offset="{i / 10:.1f}" stop-color="{p["gutter"]}" stop-opacity="{float(p["gutterO"]) * (3 * b * b - 2 * b ** 3):.3f}"/>'
+                  for i in range(11) for b in [1 - abs(2 * i / 10 - 1)])
+    L = 232
+    ribbon = (f'<g transform="translate(600 0)"><g>'
+              f'<animateTransform attributeName="transform" type="rotate" values="-1.4;1.4;-1.4" keyTimes="0;.5;1" calcMode="spline" '
+              f'keySplines="{EASE};{EASE}" dur="7s" repeatCount="indefinite"/>'
+              f'<path d="M-8,-2 H10 V{L + 2} L1,{L - 9} L-8,{L + 2} Z" transform="translate(3 3)" fill="#000" opacity="{p["ribbonShadeO"]}" filter="url(#rblur)"/>'
+              f'<path d="M-9,-2 H9 V{L} L0,{L - 11} L-9,{L} Z" fill="url(#rib)"/>'
+              f'<path d="M-4,0 V{L - 7}" stroke="#fff" stroke-opacity=".2" stroke-width="1.5"/></g></g>')
+    css = (fontface("caveat") + ".h{font-family:'Caveat',cursive;font-weight:600}"
+           "@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}.e{animation:rise .6s ease both}")
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="contents: repositories of {LOGIN}">'
+            + card_frame(p, W, H, "T")
+            + f'<defs><style><![CDATA[{css}]]></style>'
+            f'<linearGradient id="gut" x1="0" y1="0" x2="1" y2="0">{gut}</linearGradient>'
+            f'<linearGradient id="rule" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["accent"]}" stop-opacity=".7"/><stop offset="1" stop-color="{p["accent"]}" stop-opacity="0"/></linearGradient>'
+            f'<linearGradient id="rib" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["ribbon1"]}"/><stop offset=".35" stop-color="{p["ribbon0"]}"/>'
+            f'<stop offset="1" stop-color="{p["ribbon1"]}"/></linearGradient>'
+            f'<filter id="rblur" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="2.5"/></filter></defs>'
+            + f'<rect x="540" y="1.5" width="120" height="{H - 3}" fill="url(#gut)"/>'
+            + f'<line x1="600" y1="1.5" x2="600" y2="{H - 1.5}" stroke="{p["gutter"]}" stroke-opacity="{p["gutterO"]}"/>'
+            + "".join(body) + underline + ribbon + "</svg>")
 
 
 def snake_card(theme, raw):
@@ -403,7 +747,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     d = collect()
     for theme in ("dark", "light"):
-        for name, fn in (("stats", stats_panel), ("calendar", calendar_card)):
+        for name, fn in (("stats", stats_panel), ("calendar", calendar_card), ("shelf", shelf_card), ("toc", toc_card)):
             path = os.path.join(OUT, f"{name}-{theme}.svg")
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(punch(fn(theme, d), theme == "dark"))
