@@ -15,7 +15,7 @@ from sunlight import halo
 NAME = "Shxiao101"
 GREETING = "hi there, i'm"
 TAGLINE = "code, books, and quiet afternoons"
-PILLS = ["Byr Docs", "computer science", "always reading"]
+PILLS = ["BYR Docs", "computer science", "always reading"]
 FOOT_LINE = "thanks for stopping by"
 FOOT_SUB = "Shxiao  ·  Amano Tooko"
 # --------------------------------------------------------------------------------------------------

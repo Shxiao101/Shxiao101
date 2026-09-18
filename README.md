@@ -11,7 +11,7 @@
 ### ✦ Prologue
 
 - 🎓 A sophomore in Computer Science and Technology
-- 📚 A member of [Byr Docs](https://github.com/byrdocs)
+- 📚 A member of [BYR Docs](https://github.com/byrdocs)
 - 🌸 She is Amano Tooko. As you can see, a literary girl.
 
 <picture>
