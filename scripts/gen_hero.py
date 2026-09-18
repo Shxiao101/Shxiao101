@@ -329,7 +329,7 @@ def leaves(w, h, seed=21):
             f'<g><animateTransform attributeName="transform" type="translate" values="0 {-14*s:.0f};0 {h+14*s:.0f}" dur="{fall:.1f}s" begin="{fbeg:.1f}s" repeatCount="indefinite"/>'
             f'<g><animateTransform attributeName="transform" type="translate" values="{-sway:.0f} 0;{sway:.0f} 0;{-sway:.0f} 0" {swing}/>'
             f'<g><animateTransform attributeName="transform" type="rotate" values="{spin-tilt:.0f};{spin+tilt:.0f};{spin-tilt:.0f}" {swing}/>'
-            f'<g transform="scale({s:.2f})"><use href="#leaf" fill="{c}" stroke="{c}" stroke-width=".8" stroke-linejoin="round">'
+            f'<g transform="scale({s:.2f})"><use href="#leaf" fill="{c}">'
             f'<animateTransform attributeName="transform" type="scale" values="1 1;.25 1;1 1" keyTimes="0;.5;1" calcMode="spline" keySplines="{EASE}" dur="{flip:.1f}s" begin="{fbeg:.1f}s" repeatCount="indefinite"/>'
             f'</use></g></g></g></g></g>')
     return "\n".join(out)

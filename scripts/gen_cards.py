@@ -19,7 +19,7 @@ import sys
 import unicodedata
 import urllib.request
 
-from maple import LEAF_COLORS, leaf_def
+from maple import LEAF_COLORS, STALK_END, leaf_def
 from paper import punch
 from sunlight import light_rays
 
@@ -483,17 +483,19 @@ def vase(p, cx, base):
     rnd = random.Random(3)
     mouth = base - 54
     stems = ["M0,4 C-3,-22 -14,-44 -30,-66", "M1,4 C4,-26 10,-52 20,-86", "M0,4 C2,-14 0,-28 8,-44"]
-    # (x, y, scale, angle): at the stem tips and along the stems, relative to the mouth
-    spots = [(-30, -66, 1.25, -35), (-13, -37, .9, -62), (20, -86, 1.3, 14), (9, -52, .95, 58), (8, -44, 1.0, 30)]
+    # (x, y, scale, angle): where a leaf's stalk joins a stem (at the tips and part way along), relative to the
+    # mouth, and which way the leaf points
+    spots = [(-30, -66, 1.0, -36), (-11.7, -35.9, .8, -72), (20, -86, 1.05, 16), (10.9, -52.7, .8, 62), (8, -44, .9, 24)]
+    sx, sy = STALK_END
     leaves = []
     for x, y, s, a in spots:
         c = rnd.choice(LEAF_COLORS)
         dur, beg = rnd.uniform(3.5, 5.5), -rnd.uniform(0, 5)
-        leaves.append(
+        leaves.append(   # hung by the end of its stalk, so it sways about the stem
             f'<g transform="translate({x} {y}) rotate({a})"><g>'
             f'<animateTransform attributeName="transform" type="rotate" values="-7;7;-7" keyTimes="0;.5;1" calcMode="spline" '
             f'keySplines="{EASE};{EASE}" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
-            f'<use href="#vleaf" transform="scale({s})" fill="{c}" stroke="{c}" stroke-width=".8" stroke-linejoin="round"/></g></g>')
+            f'<use href="#vleaf" transform="scale({s}) translate({-sx} {-sy})" fill="{c}"/></g></g>')
     stems = "".join(f'<path d="{s}"/>' for s in stems)
     sprig = (f'<g transform="translate({cx} {mouth})"><g>'
              f'<animateTransform attributeName="transform" type="rotate" values="-1.6;1.6;-1.6" keyTimes="0;.5;1" calcMode="spline" '
@@ -514,7 +516,7 @@ def vase(p, cx, base):
             f'<animateTransform attributeName="transform" type="translate" values="-26 -60;-10 -32;-30 -4;6 26;30 {base - 3 - mouth};30 {base - 3 - mouth}" {spl}/>'
             f'<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 1;1 1;1 .35;1 .35" {spl}/>'
             f'<g><animateTransform attributeName="transform" type="rotate" values="0;50;-25;60;95;95" {spl}/>'
-            f'<use href="#vleaf" transform="scale(1.1)" fill="{c}" stroke="{c}" stroke-width=".8"/></g></g></g></g>')
+            f'<use href="#vleaf" transform="scale(1.1)" fill="{c}"/></g></g></g></g>')
     return sprig + body, fall
 
 
