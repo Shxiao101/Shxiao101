@@ -214,7 +214,7 @@ PAL = {
         spark="#fff2b0", toneR="0 .5 .9", toneG="0 .46 .82", toneB="0 .4 .7",
         # bookshelf and contents page
         wood="#6b4a2a", wood0="#553820", wood1="#3a2613", woodLine="#1e1208", wallShade="#000", wallShadeO=".55",
-        bookShade="#000", bookShadeO=".55", clothDim=".2", foil="#ecd27a", foilDark="#2a1d0a", paperLabel="#e9dcb8",
+        bookShade="#000", bookShadeO=".55", clothDim=".2", foil="#ecd27a", foilDark="#2a1d0a",
         vase0="#7aa593", vase1="#3c5c50", metal0="#8a826c", metal1="#4a453a", stem="#8a5a32",
         ribbon0="#e0552a", ribbon1="#9c3a18", ribbonShadeO=".35", gutter="#000", gutterO=".42",
         nextPage="#221e13", flap0="#0e0d08", flap1="#5c5238", flap2="#39321f", flap3="#282316", curlShadeO=".5"),
@@ -229,7 +229,7 @@ PAL = {
         blobA="#f2e173", blobAo=".50", blobB="#d8e3a4", blobBo=".55", blobC="#e6dcf5", blobCo=".70",
         spark="#b8921c", toneR="0 1", toneG="0 1", toneB="0 1",
         wood="#dcb682", wood0="#c0915a", wood1="#9a6a38", woodLine="#6b4520", wallShade="#7a5a2a", wallShadeO=".22",
-        bookShade="#5a4520", bookShadeO=".22", clothDim="0", foil="#f3d98a", foilDark="#3a2a10", paperLabel="#fbf5e2",
+        bookShade="#5a4520", bookShadeO=".22", clothDim="0", foil="#f3d98a", foilDark="#3a2a10",
         vase0="#b3d0c1", vase1="#6f9483", metal0="#c2b9a2", metal1="#7d7462", stem="#7a5230",
         ribbon0="#d9481c", ribbon1="#a82a10", ribbonShadeO=".16", gutter="#6b5a2a", gutterO=".16",
         nextPage="#efe4c3", flap0="#cdbb86", flap1="#fffbef", flap2="#f3e8cb", flap3="#e4d5aa", curlShadeO=".16"),
@@ -455,22 +455,27 @@ def calendar_card(theme, d):
 SHELF_Y = 258          # top of the shelf board, where the books stand
 
 
-def spine_trim(style, x, y, w, h, foil, p, ornament):
-    """Gilt and label work on a spine; every volume of one language shares a style, like a set."""
-    def rule(yy, hh=1.4, o=.85):
-        return f'<rect x="{x + 2.5:.1f}" y="{yy:.1f}" width="{w - 5:.1f}" height="{hh}" fill="{foil}" opacity="{o}"/>'
-    foot = y + h
+def spine_trim(style, x, y, w, foil, ornament):
+    """Gilt work on a spine, the foot a mirror image of the head; every volume of one language shares a style,
+    like a set.  The front of the shelf board hides the bottom 4px of each book, so the foot is measured from
+    what shows."""
+    head, foot = y, SHELF_Y - 4
+
+    def mirrored(d, hh, piece):   # `piece(top_y)` d px in from the head, and again d px in from the foot
+        return piece(head + d) + piece(foot - d - hh)
+
+    def rule(d, hh=1.4, o=.85):
+        return mirrored(d, hh, lambda yy: f'<rect x="{x + 2.5:.1f}" y="{yy:.1f}" width="{w - 5:.1f}" height="{hh}" fill="{foil}" opacity="{o}"/>')
+
     # a small gilt lozenge mid-spine where there's no title
-    lozenge = (f'<rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="translate({x + w / 2:.1f} {y + h * .45:.1f}) rotate(45)" '
+    lozenge = (f'<rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="translate({x + w / 2:.1f} {(head + foot) / 2:.1f}) rotate(45)" '
                f'fill="{foil}" opacity=".7"/>' if ornament else "")
-    if style == 0:        # double gilt rules at head and foot
-        return rule(y + 11) + rule(y + 15.5) + rule(foot - 19) + rule(foot - 14.5) + lozenge
+    if style == 0:        # double gilt rules
+        return rule(11) + rule(15.5) + lozenge
     if style == 1:        # dark leather bands edged in gilt
-        return lozenge + "".join(f'<rect x="{x:.1f}" y="{yy:.1f}" width="{w:.1f}" height="13" fill="#000" opacity=".24"/>'
-                                 + rule(yy - 1.6, 1.2, .8) + rule(yy + 13.4, 1.2, .8) for yy in (y + 9, foot - 24))
-    # a library label near the foot, one broad gilt rule at the head
-    return (rule(y + 12, 2.2) + f'<rect x="{x + 4:.1f}" y="{foot - 37:.1f}" width="{w - 8:.1f}" height="17" rx="1.5" fill="{p["paperLabel"]}" opacity=".92"/>'
-            f'<rect x="{x + 7:.1f}" y="{foot - 29.5:.1f}" width="{w - 14:.1f}" height="1.2" fill="#5a4a2a" opacity=".45"/>')
+        band = mirrored(9, 13, lambda yy: f'<rect x="{x:.1f}" y="{yy:.1f}" width="{w:.1f}" height="13" fill="#000" opacity=".24"/>')
+        return band + rule(7.4, 1.2, .8) + rule(22.4, 1.2, .8) + lozenge
+    return rule(12, 2.4) + lozenge   # one broad gilt rule
 
 
 def vase(p, cx, base):
@@ -547,12 +552,14 @@ def shelf_card(theme, d):
         y = SHELF_Y - h
         foil = p["foil"] if luma(v["c"]) < .5 else p["foilDark"]
         title = ""
-        if v["first"] and w >= 18 and text_width("outfit", v["name"], 11, .6) <= h - 70:
+        # a long name is set smaller to fit between the head and foot trim, down to a size that still reads
+        size = min(11, 11 * (h - 70) / text_width("outfit", v["name"], 11, .6))
+        if v["first"] and w >= 18 and size >= 8.5:
             # spine titles read top to bottom; rotated, the glyphs sit to the right of the baseline
-            title = (f'<text transform="translate({x + w / 2 - 4:.1f} {y + 32:.1f}) rotate(90)" class="t" font-size="11" '
-                     f'letter-spacing=".6" fill="{foil}">{esc(v["name"])}</text>')
+            title = (f'<text transform="translate({x + w / 2 - size * .36:.1f} {y + 32:.1f}) rotate(90)" class="t" font-size="{size:.1f}" '
+                     f'letter-spacing="{size * .055:.2f}" fill="{foil}">{esc(v["name"])}</text>')
         body = (f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2" fill="{v["c"]}"/>'
-                + spine_trim(v["si"] % 3, x, y, w, h, foil, p, not title) + title
+                + spine_trim(v["si"] % 3, x, y, w, foil, not title) + title
                 + f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2" fill="url(#spine)"/>')
         if i in pulled:   # now and then somebody lifts a book to look at it, and puts it back
             dur, beg = rnd.uniform(16, 24), rnd.uniform(3, 14)
@@ -569,7 +576,7 @@ def shelf_card(theme, d):
              f'<rect x="44" y="{SHELF_Y - 4}" width="{W - 88}" height="5" fill="{p["wood"]}"/>'
              f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="15" rx="2" fill="url(#wood)"/>{grain}'
              f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="1.2" fill="#fff" opacity=".2"/>')
-    bx = X1 + 7
+    bx = X1 + .5          # the bookend stands right against the last book, holding the row up
     bookend = (f'<rect x="{bx}" y="{SHELF_Y - 70}" width="8" height="70" rx="2.5" fill="url(#metal)"/>'
                f'<rect x="{bx + 1.6}" y="{SHELF_Y - 67}" width="1.3" height="62" fill="#fff" opacity=".25"/>')
     flowers, falling = vase(p, 1112, SHELF_Y - 2)
