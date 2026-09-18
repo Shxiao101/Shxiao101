@@ -8,29 +8,21 @@
 
 </div>
 
-### ✦ Prologue
+<div align="center">
 
-- 🎓 A sophomore in Computer Science and Technology
-- 📚 A member of [BYR Docs](https://github.com/byrdocs)
-- 🌸 She is Amano Tooko. As you can see, a literary girl.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-light.svg">
+  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-dark.svg" alt="Preface: a sophomore in Computer Science and Technology, a member of BYR Docs. She is Amano Tooko. As you can see, a literary girl. Contents: my repositories." width="100%">
+</picture>
+
+</div>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/divider-light.svg">
   <img src="assets/divider-dark.svg" alt="" width="100%">
 </picture>
-
-### ✦ Contents
-
-<div align="center">
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-light.svg">
-  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/toc-dark.svg" alt="contents: my repositories, and the projects that merged my pull requests" width="100%">
-</picture>
-
-</div>
 
 ### ✦ stats
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the profile's stats panel, contribution calendar, bookshelf and contents page as themed SVGs.
+"""Render the profile's stats panel, contribution calendar, bookshelf and preface & contents book page as themed SVGs.
 
 Runs in GitHub Actions (see .github/workflows/cards.yml) and writes dist/{stats,calendar,shelf,toc}-{dark,light}.svg.
 `gen_cards.py snake` instead frames the dist/snake-{dark,light}.svg that Platane/snk produced
@@ -28,6 +28,15 @@ ROOT = os.path.dirname(HERE)
 OUT = os.path.join(ROOT, "dist")
 LOGIN = os.environ.get("GH_LOGIN", "Shxiao101")
 TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+
+# ---- the preface: the left page of the book card, beside the contents -----------------------------
+PREFACE = [                      # (icon, text): icons are "cap", "books" or "blossom"; \n breaks the line
+    ("cap", "A sophomore in\nComputer Science and Technology"),
+    ("books", "A member of BYR Docs"),
+    ("blossom", "She is Amano Tooko.\nAs you can see, a literary girl."),
+]
+PREFACE_NAMES = ["BYR Docs", "Amano Tooko"]   # inked in the accent colour
+# --------------------------------------------------------------------------------------------------
 
 FONTS = json.load(open(os.path.join(HERE, "fonts.json"), encoding="utf-8"))
 STATS_IMG = base64.b64encode(open(os.path.join(HERE, "stats.jpg"), "rb").read()).decode()
@@ -122,37 +131,6 @@ def streaks(days, today):
     return {"total": sum(c for _, c in days), "current": current, "longest": longest, "first": first}
 
 
-PR_QUERY = """
-query($login: String!, $after: String) {
-  user(login: $login) {
-    pullRequests(states: MERGED, first: 100, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
-      pageInfo { hasNextPage endCursor }
-      nodes { repository { name isPrivate stargazerCount owner { login } primaryLanguage { name } } }
-    }
-  }
-}
-"""
-
-
-def merged_upstream():
-    """Other people's public repositories that merged my pull requests: most merged first, then most starred."""
-    groups, after = {}, None
-    for _ in range(10):
-        page = gql(PR_QUERY, {"login": LOGIN, "after": after})["user"]["pullRequests"]
-        for n in page["nodes"]:
-            r = n["repository"]
-            if not r or r["isPrivate"] or r["owner"]["login"].lower() == LOGIN.lower():
-                continue
-            g = groups.setdefault((r["owner"]["login"], r["name"]), {
-                "owner": r["owner"]["login"], "name": r["name"], "stars": r["stargazerCount"],
-                "lang": (r["primaryLanguage"] or {}).get("name"), "count": 0})
-            g["count"] += 1
-        if not page["pageInfo"]["hasNextPage"]:
-            break
-        after = page["pageInfo"]["endCursor"]
-    return sorted(groups.values(), key=lambda g: (-g["count"], -g["stars"], g["name"].lower()))
-
-
 SKIP_LANGS = {"XSLT", "Makefile", "DTrace", "HTML", "Shell", "Batchfile", "CMake"}
 
 
@@ -197,7 +175,6 @@ def collect():
                  "desc": " ".join((r["description"] or "").split()),
                  "langs": [e["node"]["name"] for e in r["languages"]["edges"] if e["node"]["name"] not in SKIP_LANGS]}
                 for r in own],
-        "upstream": merged_upstream(),
     }
 
 
@@ -217,7 +194,7 @@ PAL = {
         bookShade="#000", bookShadeO=".55", clothDim=".2", foil="#ecd27a", foilDark="#2a1d0a",
         vase0="#7aa593", vase1="#3c5c50", metal0="#8a826c", metal1="#4a453a", stem="#8a5a32",
         ribbon0="#e0552a", ribbon1="#9c3a18", ribbonShadeO=".35", gutter="#000", gutterO=".42",
-        nextPage="#221e13", flap0="#0e0d08", flap1="#5c5238", flap2="#39321f", flap3="#282316", curlShadeO=".5"),
+        nextPage="#221e13", flap0="#0e0d08", flap1="#5c5238", flap2="#39321f", flap3="#282316", curlShadeO=".5", blossom="#f2a2b5"),
     "light": dict(
         bg0="#fffdf3", bg1="#f8f2d8", border="#e6dcae",
         title="#3b340c", label="#6f6434", value="#3b340c", muted="#8f8454",
@@ -232,7 +209,7 @@ PAL = {
         bookShade="#5a4520", bookShadeO=".22", clothDim="0", foil="#f3d98a", foilDark="#3a2a10",
         vase0="#b3d0c1", vase1="#6f9483", metal0="#c2b9a2", metal1="#7d7462", stem="#7a5230",
         ribbon0="#d9481c", ribbon1="#a82a10", ribbonShadeO=".16", gutter="#6b5a2a", gutterO=".16",
-        nextPage="#efe4c3", flap0="#cdbb86", flap1="#fffbef", flap2="#f3e8cb", flap3="#e4d5aa", curlShadeO=".16"),
+        nextPage="#efe4c3", flap0="#cdbb86", flap1="#fffbef", flap2="#f3e8cb", flap3="#e4d5aa", curlShadeO=".16", blossom="#dc7690"),
 }
 
 
@@ -265,10 +242,6 @@ ICON = {
 
 def fmt(n):
     return f"{n/1000:.1f}k" if n >= 10000 else f"{n:,}"
-
-
-def short(n):
-    return f"{n/1000:.1f}k" if n >= 1000 else str(n)
 
 
 def esc(s):
@@ -702,9 +675,64 @@ def toc_entry(p, x0, x1, y, num, name, value, sub, t):
             f'<text x="{nx}" y="{y + 21}" class="m" font-size="11.5" fill="{p["muted"]}">{esc(sub)}</text></g>' + leader, nx, nw)
 
 
+BLOSSOM_PETAL = "M0,0 C-3.3,-2.4 -3.5,-6.6 -1.3,-8.2 L0,-6.9 L1.3,-8.2 C3.5,-6.6 3.3,-2.4 0,0 Z"   # notched at the tip
+
+
+def preface_icon(kind, p):
+    """Little drawn stand-ins for the prologue's emoji, about 20px across, centred on the origin."""
+    line = f'fill="none" stroke="{p["accent"]}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"'
+    if kind == "cap":         # mortarboard with its tassel
+        return (f'<g {line}><path d="M0,-6.5 L10,-2.5 L0,1.5 L-10,-2.5 Z" fill="{p["accent"]}" fill-opacity=".25"/>'
+                f'<path d="M-5.5,-.3 V4 Q0,7.5 5.5,4 V-.3"/><path d="M10,-2.5 V4.5"/></g>'
+                f'<circle cx="10" cy="5.6" r="1.5" fill="{p["accent"]}"/>')
+    if kind == "books":       # two standing, one leaning
+        return (f'<g {line}><rect x="-8" y="-6.5" width="4.4" height="13" rx=".8"/><rect x="-2.6" y="-4.5" width="4.4" height="11" rx=".8"/>'
+                f'<rect x="2.6" y="-6.5" width="4.4" height="13" rx=".8" transform="rotate(14 7 6.5)"/><path d="M-9.5,6.5 H10.5"/></g>')
+    petals = "".join(f'<path d="{BLOSSOM_PETAL}" transform="rotate({a})"/>' for a in range(0, 360, 72))
+    return f'<g fill="{p["blossom"]}">{petals}</g><circle r="1.7" fill="{p["accent"]}"/>'   # cherry blossom
+
+
+def wrap(key, text, size, max_w):
+    """Break `text` into lines no wider than max_w."""
+    lines, cur = [], ""
+    for word in text.split():
+        trial = f"{cur} {word}".strip()
+        if cur and text_width(key, trial, size) > max_w:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = trial
+    return lines + [cur] if cur else lines
+
+
+def preface_page(p, x0, x1, y0, t0):
+    """The preface lines, hand-written one after another from t0: each line is uncovered left to right at
+    writing speed (its clip's base width shows the whole line, the set at 0s hides it until the pen gets there).
+    Returns (body, clip defs, last baseline)."""
+    tx, size, lead, gap, speed = x0 + 36, 27, 31, 17, 280
+    body, clips, y, t = [], [], y0, t0
+    for i, (icon, text) in enumerate(PREFACE):
+        body.append(f'<g class="e" style="animation-delay:{t:.2f}s"><g transform="translate({x0 + 14} {y - 8})">{preface_icon(icon, p)}</g></g>')
+        lines = [ln for part in text.split("\n") for ln in wrap("caveat", part, size, x1 - tx)]
+        for j, line in enumerate(lines):
+            w = text_width("caveat", line, size) + 14
+            dur = max(.3, w / speed)
+            ink = esc(line)
+            for name in PREFACE_NAMES:
+                ink = ink.replace(esc(name), f'<tspan fill="{p["accent"]}">{esc(name)}</tspan>')
+            clips.append(f'<clipPath id="pw{i}_{j}"><rect x="{tx - 6}" y="{y - size - 4}" width="{w:.1f}" height="{size + 16}">'
+                         f'<set attributeName="width" to="0" begin="0s" fill="freeze"/>'
+                         f'<animate attributeName="width" from="0" to="{w:.1f}" begin="{t:.2f}s" dur="{dur:.2f}s" fill="freeze"/></rect></clipPath>')
+            body.append(f'<text x="{tx}" y="{y}" class="h" font-size="{size}" fill="{p["value"]}" clip-path="url(#pw{i}_{j})">{ink}</text>')
+            t += dur + .08
+            y += lead
+        y += gap
+    return "".join(body), "".join(clips), y - lead - gap
+
+
 def toc_card(theme, d):
-    """The repositories as a book's contents: an open spread with my own repositories on the left page and, on the
-    right, the marginalia - other people's projects that merged my pull requests.  A ribbon lies in the gutter."""
+    """A book lying open: the preface on the left page (see PREFACE) and the contents - my own repositories,
+    latest first - on the right.  A ribbon lies in the gutter; the bottom-right corner is curled."""
     p = PAL[theme]
     W = 1200
     today = d["today"]
@@ -713,44 +741,39 @@ def toc_card(theme, d):
         m = day.strftime("%b").lower()
         return f"{m} {day.day}" if day.year == today.year else f"{m} {day.year}"
 
-    left = []
+    chapters = []
     for r in d["own"][:4]:
         about = [r["langs"][0], r["desc"]] if r["desc"] and r["langs"] else [r["desc"] or ", ".join(r["langs"][:3])]
-        left.append((r["name"], when(r["pushed"]), "  ·  ".join(a for a in about if a)))
-    right, per_owner = [], {}
-    for g in d["upstream"]:   # two repositories per owner at most, so one busy organisation doesn't fill the page
-        if len(right) < 4 and per_owner.get(g["owner"], 0) < 2:
-            per_owner[g["owner"]] = per_owner.get(g["owner"], 0) + 1
-            right.append((g["name"], str(g["count"]),
-                          "  ·  ".join([g["owner"], f"{short(g['stars'])} stars"] + ([g["lang"]] if g["lang"] else []))))
+        chapters.append((r["name"], when(r["pushed"]), "  ·  ".join(a for a in about if a)))
     Y0, PITCH = 168, 58
-    rows = max(len(left), len(right), 1)
-    H = Y0 + (rows - 1) * PITCH + 90
-    pages = [(96, 552, "Contents", "part i  ·  my repositories", "last pushed", left, 0),
-             (648, 1104, "Marginalia", "part ii  ·  merged upstream", "merged prs", right, len(left))]
-    body, n, latest = [], 0, None
-    for pi, (x0, x1, title, part, col, entries, first) in enumerate(pages):
+    (lx0, lx1), (rx0, rx1) = (96, 552), (648, 1104)
+    preface, preface_clips, preface_end = preface_page(p, lx0, lx1, Y0, .3)
+    contents_end = Y0 + (max(len(chapters), 1) - 1) * PITCH + 21
+    H = round(max(preface_end, contents_end) + 70)
+    body = []
+    for pi, (x0, x1, title, part, col) in enumerate([(lx0, lx1, "Preface", "about the author", ""),
+                                                     (rx0, rx1, "Contents", "my repositories", "last pushed")]):
         body.append(f'<text x="{x0}" y="84" class="h" font-size="46" fill="url(#tgT)">{title}</text>'
                     f'<text x="{x0}" y="118" class="m" font-size="12" letter-spacing="2" fill="{p["accent"]}">{part}</text>'
                     f'<text x="{x1}" y="118" class="m" font-size="11" text-anchor="end" fill="{p["muted"]}">{col}</text>'
                     f'<rect x="{x0}" y="131" width="{x1 - x0}" height="1.2" fill="url(#rule)"/>'
                     f'<text x="{(x0 + x1) / 2}" y="{H - 26}" text-anchor="middle" class="h" font-size="20" fill="{p["muted"]}">~ {pi + 1} ~</text>')
-        if not entries:
-            body.append(f'<text x="{x0 + 36}" y="{Y0}" class="h" font-size="24" fill="{p["muted"]}">blank pages, for now</text>')
-        for j, (name, value, sub) in enumerate(entries):
-            y = Y0 + j * PITCH
-            entry, nx, nw = toc_entry(p, x0, x1, y, first + j, name, value, sub, .3 + n * .18)
-            body.append(entry)
-            n += 1
-            if pi == 0 and j == 0:
-                latest = (nx, nw, y)
+    body.append(preface)
+    if not chapters:
+        body.append(f'<text x="{rx0 + 36}" y="{Y0}" class="h" font-size="24" fill="{p["muted"]}">blank pages, for now</text>')
+    latest = None
+    for j, (name, value, sub) in enumerate(chapters):
+        y = Y0 + j * PITCH
+        entry, nx, nw = toc_entry(p, rx0, rx1, y, j, name, value, sub, .5 + j * .18)
+        body.append(entry)
+        latest = latest or (nx, nw, y)
     underline = ""
-    if latest:   # a red-pencil underline under the latest chapter, once the pages are written
+    if latest:   # a red-pencil underline under the latest chapter, once the contents are written
         nx, nw, y = latest
         underline = (f'<path d="M{nx - 3:.1f},{y + 7} C{nx + nw * .3:.1f},{y + 3} {nx + nw * .65:.1f},{y + 10} {nx + nw + 5:.1f},{y + 4.5}" '
                      f'fill="none" stroke="{p["ribbon0"]}" stroke-width="2.4" stroke-linecap="round" opacity=".85" pathLength="1" stroke-dasharray="1 1">'
                      f'<set attributeName="stroke-dashoffset" to="1" begin="0s" fill="freeze"/>'
-                     f'<animate attributeName="stroke-dashoffset" from="1" to="0" begin="{.3 + n * .18 + .5:.2f}s" dur=".6s" fill="freeze"/></path>')
+                     f'<animate attributeName="stroke-dashoffset" from="1" to="0" begin="{.5 + len(chapters) * .18 + .6:.2f}s" dur=".6s" fill="freeze"/></path>')
     gut = "".join(f'<stop offset="{i / 10:.1f}" stop-color="{p["gutter"]}" stop-opacity="{float(p["gutterO"]) * (3 * b * b - 2 * b ** 3):.3f}"/>'
                   for i in range(11) for b in [1 - abs(2 * i / 10 - 1)])
     L = 232
@@ -763,10 +786,11 @@ def toc_card(theme, d):
     css = (fontface("caveat") + ".h{font-family:'Caveat',cursive;font-weight:600}"
            "@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}.e{animation:rise .6s ease both}")
     curl_defs, next_page, flap = page_curl(W, H, p)
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="contents: repositories of {LOGIN}">'
+    label = esc(f"preface: {' '.join(text.replace(chr(10), ' ') for _, text in PREFACE)} contents: repositories of {LOGIN}")
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">'
             + f'<defs>{curl_defs}</defs>' + next_page + '<g clip-path="url(#curl)">'
             + card_frame(p, W, H, "T")
-            + f'<defs><style><![CDATA[{css}]]></style>'
+            + f'<defs><style><![CDATA[{css}]]></style>{preface_clips}'
             f'<linearGradient id="gut" x1="0" y1="0" x2="1" y2="0">{gut}</linearGradient>'
             f'<linearGradient id="rule" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["accent"]}" stop-opacity=".7"/><stop offset="1" stop-color="{p["accent"]}" stop-opacity="0"/></linearGradient>'
             f'<linearGradient id="rib" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["ribbon1"]}"/><stop offset=".35" stop-color="{p["ribbon0"]}"/>'
