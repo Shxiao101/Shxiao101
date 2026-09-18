@@ -24,7 +24,7 @@
   <img src="assets/divider-dark.svg" alt="" width="100%">
 </picture>
 
-### ✦ stats
+### ✦ Chapter I · The Story So Far
 
 <div align="center">
 
@@ -53,6 +53,8 @@
 </picture>
 
 </div>
+
+### ✦ Afterword
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/footer-dark.svg">
