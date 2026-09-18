@@ -216,7 +216,8 @@ PAL = {
         wood="#6b4a2a", wood0="#553820", wood1="#3a2613", woodLine="#1e1208", wallShade="#000", wallShadeO=".55",
         bookShade="#000", bookShadeO=".55", clothDim=".2", foil="#ecd27a", foilDark="#2a1d0a", paperLabel="#e9dcb8",
         vase0="#7aa593", vase1="#3c5c50", metal0="#8a826c", metal1="#4a453a", stem="#8a5a32",
-        ribbon0="#e0552a", ribbon1="#9c3a18", ribbonShadeO=".35", gutter="#000", gutterO=".42"),
+        ribbon0="#e0552a", ribbon1="#9c3a18", ribbonShadeO=".35", gutter="#000", gutterO=".42",
+        nextPage="#221e13", flap0="#0e0d08", flap1="#5c5238", flap2="#39321f", flap3="#282316", curlShadeO=".5"),
     "light": dict(
         bg0="#fffdf3", bg1="#f8f2d8", border="#e6dcae",
         title="#3b340c", label="#6f6434", value="#3b340c", muted="#8f8454",
@@ -230,7 +231,8 @@ PAL = {
         wood="#dcb682", wood0="#c0915a", wood1="#9a6a38", woodLine="#6b4520", wallShade="#7a5a2a", wallShadeO=".22",
         bookShade="#5a4520", bookShadeO=".22", clothDim="0", foil="#f3d98a", foilDark="#3a2a10", paperLabel="#fbf5e2",
         vase0="#b3d0c1", vase1="#6f9483", metal0="#c2b9a2", metal1="#7d7462", stem="#7a5230",
-        ribbon0="#d9481c", ribbon1="#a82a10", ribbonShadeO=".16", gutter="#6b5a2a", gutterO=".16"),
+        ribbon0="#d9481c", ribbon1="#a82a10", ribbonShadeO=".16", gutter="#6b5a2a", gutterO=".16",
+        nextPage="#efe4c3", flap0="#cdbb86", flap1="#fffbef", flap2="#f3e8cb", flap3="#e4d5aa", curlShadeO=".16"),
 }
 
 
@@ -607,6 +609,66 @@ def shelf_card(theme, d):
             + "".join(books) + flowers + bookend + plank + falling + "".join(legend) + "</svg>")
 
 
+# the contents page's bottom-right corner curls up: (px along the bottom edge, px up the right edge) at rest,
+# and when it lifts as if about to be turned
+CURL_REST, CURL_LIFT = (86, 68), (112, 90)
+
+
+def curl_geometry(W, H, a, b):
+    """Path data and gradient axis for the corner folded back along the crease from (W-a, H) to (W, H-b).
+    The flap is the corner mirrored over the crease, its edges bowed and its tip rounded like the card's corners;
+    the crease itself bulges toward the corner, where the paper rolls over."""
+    def lerp(A, B, t):
+        return (A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t)
+
+    def toward(A, B, dist):
+        length = ((B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2) ** .5
+        return lerp(A, B, dist / length)
+
+    P1, P2, C = (W - a, H), (W, H - b), (W, H)
+    dx, dy = P2[0] - P1[0], P2[1] - P1[1]
+    t = ((C[0] - P1[0]) * dx + (C[1] - P1[1]) * dy) / (dx * dx + dy * dy)
+    F = (P1[0] + t * dx, P1[1] + t * dy)             # foot of the corner on the crease
+    T = (2 * F[0] - C[0], 2 * F[1] - C[1])           # where the corner's tip lands
+    Q = lerp(F, C, .3)                               # crease control point
+    A, B = toward(T, P1, 16), toward(T, P2, 16)
+    c1, c2 = lerp(lerp(P1, A, .5), F, .18), lerp(lerp(B, P2, .5), F, .18)
+    mid = lerp(lerp(P2, Q, .5), lerp(Q, P1, .5), .5)  # middle of the crease curve
+    pt = lambda P: f"{P[0]:.1f},{P[1]:.1f}"
+    return {
+        "clip": f"M0,0 H{W} V{P2[1]:.1f} Q{pt(Q)} {pt(P1)} H0 Z",
+        "flap": f"M{pt(P1)} Q{pt(c1)} {pt(A)} Q{pt(T)} {pt(B)} Q{pt(c2)} {pt(P2)} Q{pt(Q)} {pt(P1)} Z",
+        "crease": f"M{pt(P2)} Q{pt(Q)} {pt(P1)}",
+        "x1": f"{mid[0]:.1f}", "y1": f"{mid[1]:.1f}", "x2": f"{T[0]:.1f}", "y2": f"{T[1]:.1f}",
+    }
+
+
+def page_curl(W, H, p):
+    """(defs, under, over) for a curled bottom-right corner: `under` is the next page showing through, drawn before
+    the card; the card goes in <g clip-path="url(#curl)">; `over` is the flap and its shadow.  Every ten seconds
+    the corner lifts a little, as if about to be turned, and settles back."""
+    frames = [curl_geometry(W, H, *ab) for ab in (CURL_REST, CURL_REST, CURL_LIFT, CURL_REST, CURL_REST)]
+    rest = frames[0]
+    timing = (f'keyTimes="0;.5;.64;.82;1" calcMode="spline" keySplines="0 0 1 1;{EASE};{EASE};0 0 1 1" '
+              f'dur="10s" begin="3s" repeatCount="indefinite"')
+
+    def anim(attr, key=None):
+        return f'<animate attributeName="{attr}" values="{";".join(f[key or attr] for f in frames)}" {timing}/>'
+
+    stops = zip((0, .12, .45, 1), (p["flap0"], p["flap1"], p["flap2"], p["flap3"]))
+    defs = (f'<clipPath id="curl"><path d="{rest["clip"]}">{anim("d", "clip")}</path></clipPath>'
+            f'<linearGradient id="flapG" gradientUnits="userSpaceOnUse" x1="{rest["x1"]}" y1="{rest["y1"]}" x2="{rest["x2"]}" y2="{rest["y2"]}">'
+            + "".join(f'<stop offset="{o}" stop-color="{c}"/>' for o, c in stops)
+            + anim("x1") + anim("y1") + anim("x2") + anim("y2") + '</linearGradient>'
+            f'<filter id="curlBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter>')
+    under = (f'<rect x="0.75" y="0.75" width="{W - 1.5}" height="{H - 1.5}" rx="16" fill="{p["nextPage"]}" stroke="{p["border"]}" stroke-width="1.5"/>'
+             # the roll shades the next page along the crease
+             f'<path d="{rest["crease"]}" fill="none" stroke="#000" stroke-width="12" opacity="{p["curlShadeO"]}" filter="url(#curlBlur)">{anim("d", "crease")}</path>')
+    over = (f'<path d="{rest["flap"]}" transform="translate(-4 -4)" fill="#000" opacity="{p["curlShadeO"]}" filter="url(#curlBlur)">{anim("d", "flap")}</path>'
+            f'<path d="{rest["flap"]}" fill="url(#flapG)" stroke="{p["border"]}" stroke-opacity=".5" stroke-linejoin="round">{anim("d", "flap")}</path>')
+    return defs, under, over
+
+
 ROMAN = "i ii iii iv v vi vii viii ix x".split()
 
 
@@ -691,7 +753,9 @@ def toc_card(theme, d):
               f'<path d="M-4,0 V{L - 7}" stroke="#fff" stroke-opacity=".2" stroke-width="1.5"/></g></g>')
     css = (fontface("caveat") + ".h{font-family:'Caveat',cursive;font-weight:600}"
            "@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}.e{animation:rise .6s ease both}")
+    curl_defs, next_page, flap = page_curl(W, H, p)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="contents: repositories of {LOGIN}">'
+            + f'<defs>{curl_defs}</defs>' + next_page + '<g clip-path="url(#curl)">'
             + card_frame(p, W, H, "T")
             + f'<defs><style><![CDATA[{css}]]></style>'
             f'<linearGradient id="gut" x1="0" y1="0" x2="1" y2="0">{gut}</linearGradient>'
@@ -701,7 +765,7 @@ def toc_card(theme, d):
             f'<filter id="rblur" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="2.5"/></filter></defs>'
             + f'<rect x="540" y="1.5" width="120" height="{H - 3}" fill="url(#gut)"/>'
             + f'<line x1="600" y1="1.5" x2="600" y2="{H - 1.5}" stroke="{p["gutter"]}" stroke-opacity="{p["gutterO"]}"/>'
-            + "".join(body) + underline + ribbon + "</svg>")
+            + "".join(body) + underline + ribbon + "</g>" + flap + "</svg>")
 
 
 def snake_card(theme, raw):
@@ -749,8 +813,11 @@ def main():
     for theme in ("dark", "light"):
         for name, fn in (("stats", stats_panel), ("calendar", calendar_card), ("shelf", shelf_card), ("toc", toc_card)):
             path = os.path.join(OUT, f"{name}-{theme}.svg")
+            svg = fn(theme, d)
+            if name != "toc":   # the contents page is a book page, with a curled corner instead of binder holes
+                svg = punch(svg, theme == "dark")
             with open(path, "w", encoding="utf-8") as fh:
-                fh.write(punch(fn(theme, d), theme == "dark"))
+                fh.write(svg)
             print(f"wrote {path} ({os.path.getsize(path)//1024} KB)")
     print(json.dumps({k: v for k, v in d.items() if k != "weeks"}, ensure_ascii=False, default=str))
 
