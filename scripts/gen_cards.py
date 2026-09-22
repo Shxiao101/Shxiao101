@@ -44,7 +44,6 @@ STATS_IMG = base64.b64encode(open(os.path.join(HERE, "stats.jpg"), "rb").read())
 QUERY = """
 query($login: String!) {
   user(login: $login) {
-    followers { totalCount }
     pullRequests { totalCount }
     issues { totalCount }
     repositories(first: 100, ownerAffiliations: OWNER, isFork: false, privacy: PUBLIC, orderBy: {field: STARGAZERS, direction: DESC}) {
@@ -59,7 +58,6 @@ query($login: String!) {
     contributionsCollection {
       totalCommitContributions
       restrictedContributionsCount
-      totalRepositoriesWithContributedCommits
       contributionCalendar {
         totalContributions
         weeks { contributionDays { date contributionCount contributionLevel } }
@@ -108,10 +106,14 @@ def all_days():
 
 def streaks(days, today):
     """All-time total plus current and longest streak as (length, first day, last day).
+    Input is sorted by date. Missing dates break a streak.
     Today still counts as open: a streak that ran through yesterday is kept."""
     days = [(dt.date.fromisoformat(k), c) for k, c in days if dt.date.fromisoformat(k) <= today]
     longest, run, start = (0, None, None), 0, None
+    previous = None
     for day, c in days:
+        if previous is not None and day != previous + dt.timedelta(days=1):
+            run = 0
         if c > 0:
             start = day if run == 0 else start
             run += 1
@@ -119,12 +121,15 @@ def streaks(days, today):
                 longest = (run, start, day)
         else:
             run = 0
+        previous = day
     i = len(days) - 1
-    if i >= 0 and days[i][1] == 0:
+    if i >= 0 and days[i] == (today, 0):
         i -= 1
     end, n = (days[i][0] if i >= 0 else None), 0
-    while i >= 0 and days[i][1] > 0:
+    expected = end if end in (today, today - dt.timedelta(days=1)) else None
+    while i >= 0 and days[i][0] == expected and days[i][1] > 0:
         n += 1
+        expected -= dt.timedelta(days=1)
         i -= 1
     current = (n, days[i + 1][0], end) if n else (0, None, None)
     first = next((day for day, c in days if c > 0), None)
@@ -164,8 +169,6 @@ def collect():
         "commits": cc["totalCommitContributions"] + cc["restrictedContributionsCount"],
         "prs": u["pullRequests"]["totalCount"],
         "issues": u["issues"]["totalCount"],
-        "contributed_to": cc["totalRepositoriesWithContributedCommits"],
-        "followers": u["followers"]["totalCount"],
         "total": cc["contributionCalendar"]["totalContributions"],
         "active_days": sum(1 for _, c, _ in days if c > 0),
         "days_count": len(days),

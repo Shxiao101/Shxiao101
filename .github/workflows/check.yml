@@ -1,0 +1,36 @@
+name: check profile assets
+
+on:
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "assets/**"
+      - ".github/workflows/check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "assets/**"
+      - ".github/workflows/check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install image and font dependencies
+        run: python -m pip install -r scripts/requirements.txt
+      - name: test contribution streaks
+        run: python -m unittest discover -s scripts -p "test_*.py"
+      - name: rebuild static assets
+        run: python scripts/gen_hero.py
+      - name: check committed assets are current
+        run: git diff --exit-code -- assets/
