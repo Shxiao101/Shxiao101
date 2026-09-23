@@ -333,14 +333,17 @@ def paper_sheet(x0, y0, x1, y1, right=265, foot=115, seed=101):
     (ax, ay), (bx, by) = (x1, y0 + right), (x1 - foot, y1)
     length = math.dist((ax, ay), (bx, by))
     nx, ny = (ay - by) / length, (bx - ax) / length      # unit normal pointing into the page
-    tear, t = [(ax, ay)], 0.0
+    tear, t, walk = [(ax, ay)], 0.0, 0.0
     while True:
         t += rnd.uniform(.0035, .008)
         if t >= 1:
             break
-        # the bow, a slow wander, fine fibrous jitter, and now and then a small nick
-        off = (5 * 4 * t * (1 - t) + 1.4 * math.sin(t * 13 + 1) + .8 * math.sin(t * 37)
-               + rnd.uniform(-1.3, 1.3) + (rnd.uniform(2, 3.5) if rnd.random() < .07 else 0))
+        # a rip doesn't run true: it wanders at random, bites deeper here and there, and its fibres fray;
+        # it all eases off towards the ends so the tear meets the cut edges
+        walk = max(-6, min(6, walk + rnd.uniform(-1.6, 1.6)))
+        ease = min(1, t * 7, (1 - t) * 7)
+        off = (5 * 4 * t * (1 - t) + ease * (walk + 2.2 * math.sin(t * 9 + 1)
+               + rnd.uniform(-2, 2) + (rnd.uniform(3, 6) if rnd.random() < .09 else 0)))
         tear.append((ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off))
     pts = (cut((x0, y0), (x1, y0)) + cut((x1, y0), (ax, ay)) + tear
            + cut((bx, by), (x0, y1)) + cut((x0, y1), (x0, y0)))
