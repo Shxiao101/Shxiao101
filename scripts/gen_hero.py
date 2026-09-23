@@ -318,7 +318,7 @@ def leaves(w, h, seed=21):
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
-def torn_corner(w, h, right=190, foot=300, seed=101):
+def torn_corner(w, h, right=260, foot=220, seed=101):
     """The last page's bottom-right corner, torn away: a ragged line from `right` px down the right edge to `foot` px
     in along the foot, bowing a little into the page.  Returns (card outline, border without the torn stretch, the
     tear as a polyline, the normal pointing into the page) - the other corners stay rounded."""
@@ -332,7 +332,7 @@ def torn_corner(w, h, right=190, foot=300, seed=101):
         if t >= 1:
             break
         # the bow, a slow wander, fine fibrous jitter, and now and then a small nick
-        off = (16 * 4 * t * (1 - t) + 2.5 * math.sin(t * 19 + 1) + 1.5 * math.sin(t * 47)
+        off = (10 * 4 * t * (1 - t) + 2.5 * math.sin(t * 19 + 1) + 1.5 * math.sin(t * 47)
                + rnd.uniform(-1.3, 1.3) + (rnd.uniform(2, 3.5) if rnd.random() < .07 else 0))
         pts.append((ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off))
     pts.append((bx, by))
@@ -346,7 +346,7 @@ def footer(theme):
     css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
-    TR = FW - 200                 # the text's right edge, clear of the torn corner
+    TR = FW - 100                 # the text's right edge, clear of the torn corner
     outline, border, tear, (nx, ny) = torn_corner(FW, FH)
     # the torn edge: the paper's pale core along the rip, and a faint shadow where the fibres lift
     rim, rimO, shadeO = ("#fff3c4", ".32", ".45") if theme == "dark" else ("#ffffff", "1", ".14")
