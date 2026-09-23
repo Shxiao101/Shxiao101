@@ -798,6 +798,7 @@ FRESH_DAYS = 30            # pushed this recently, a hand-written "new chapter" 
 # the bookcase is seen square on from in front of its middle: its back panel is the opening shrunk this much toward
 # that eye, so inside each shelf the walls, and the shelf's top or the underside of the one above, show in perspective
 DEPTH = .93
+BOOK_D = (8, -6)           # a book's thickness, drawn as the screen offset of its spine and page block going back
 # obi colours, taken in turn as on a bookshop's new-releases shelf: (band, print, the figure that shouts)
 OBIS = [("#f4d31f", "#1d1a14", "#c8281e"), ("#1f1d1b", "#f7f1e3", "#f4d31f"),
         ("#c8281e", "#fff8ea", "#ffe14a"), ("#f8f5ec", "#1d1a14", "#c8281e")]
@@ -869,8 +870,8 @@ def poly(*pts):
 
 
 def cover(p, i, v, today, shade=0, number=1, band=0):
-    """One bunkobon standing face out, drawn at the origin.  It opens from the right, so the spine, rounding away
-    into shade, is on the right edge.  The paper jacket carries the catalogue
+    """One bunkobon standing face out, drawn with its front at the origin.  It opens from the right, so the spine
+    is on the right: that face shows, and the top of the page block.  The paper jacket carries the catalogue
     number, title and author in a band across the top and a watercolour below; the obi (colour OBIS[band])
     carries the description as its copy and the stars in a round badge.  A glint crosses the jacket now and then.
     `shade` darkens the wash, so two volumes in one language aren't twins; `number` counts the author's volumes,
@@ -943,17 +944,26 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
              f'<animateTransform attributeName="transform" type="translate" values="-120 0;-120 0;300 0;300 0" keyTimes="0;.84;.93;1" '
              f'calcMode="spline" keySplines="0 0 1 1;{EASE};0 0 1 1" dur="15s" begin="{3 + i * 1.6:.1f}s" repeatCount="indefinite"/>'
              f'<rect y="-20" width="70" height="{ch + 40}" transform="skewX(-18)" fill="url(#glint)"/></g>')
+    # the book's depth: the spine on the right (the jacket above, the obi wrapping round below) and the page block on top
+    dx, dy = BOOK_D
+    spine = mix(mix(base, p["paper"], .55), "#000", .2 + dim)
+    solid = (f'<path d="{poly((cw, 0), (cw + dx, dy), (cw + dx, oy + dy), (cw, oy))}" fill="{spine}"/>'
+             f'<path d="{poly((cw, oy), (cw + dx, oy + dy), (cw + dx, ch + dy), (cw, ch))}" fill="{mix(bg, "#000", .22 + dim)}"/>'
+             f'<path d="{poly((0, 0), (dx, dy), (cw + dx, dy), (cw, 0))}" fill="{mix("#f1e7cf", "#000", .04 + dim)}"/>'
+             f'<path d="M{dx * .35:.1f},{dy * .35:.1f} H{cw + dx * .35:.1f} M{dx * .65:.1f},{dy * .65:.1f} H{cw + dx * .65:.1f}" '
+             f'stroke="#000" stroke-opacity=".1" stroke-width=".6"/>'     # page edges
+             f'<path d="M0,0 H{cw} L{cw + dx},{dy}" fill="none" stroke="{mix(p["paper"], "#000", dim)}" stroke-width="1.2"/>')   # the jacket's edge
     about = f"{v['name']}: {v['desc']}" if v["desc"] else v["name"]
     return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}"/></clipPath>{fade}',
-            f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
-            f'<rect x="{cw - 10}" width="10" height="{ch}" fill="url(#spine)"/>'
+            f'<title>{esc(about)}</title>{solid}<g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
             f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{note}')
 
 
 def works_card(theme, d):
     """Chapter ii, a bookcase rather than a card: the pinned repositories as bunkobon standing face out, three to a
     shelf - one shelf for up to three, two (the top one fuller) for four to six.  Seen square on from in front of
-    its middle (DEPTH), so each shelf shows its walls, and its floor or ceiling, in perspective."""
+    its middle (DEPTH), so each shelf shows its walls, and its floor or ceiling, in perspective; each book shows its
+    spine and page block (BOOK_D)."""
     p = PAL[theme]
     vols = d["works"]
     cw, ch = COVER_W, COVER_H
@@ -1026,8 +1036,6 @@ def works_card(theme, d):
             f'<defs><style><![CDATA[{CSS}{css}]]></style>{"".join(clips)}'
             f'<linearGradient id="board" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".12"/>'
             f'<stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".14"/></linearGradient>'
-            f'<linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity="0"/>'
-            f'<stop offset="1" stop-color="#000" stop-opacity=".2"/></linearGradient>'
             # watercolour: ragged, bleeding edges; and the jacket paper's grain
             f'<filter id="wash" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="3" seed="4"/>'
             f'<feDisplacementMap in="SourceGraphic" scale="30" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation="3"/></filter>'
