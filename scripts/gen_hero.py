@@ -5,7 +5,7 @@ Usage:  python scripts/gen_hero.py      (needs fontTools + brotli for text measu
 Fonts come from scripts/fonts.json (Google Fonts subsets), the art from scripts/{hero,footer}.jpg
 (see prep_images.py).  Edit the text block below to change the wording.
 """
-import base64, io, os, random
+import base64, io, math, os, random
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
 from common import EASE, FONTS as fonts, fontface, smooth_fade, star_path as star, write_svg
@@ -318,16 +318,67 @@ def leaves(w, h, seed=21):
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
+# the rip down the last page's right edge, traced from a sketch: (how far in from the rightmost point, px of the
+# sketch; how far down, 0-1).  It starts in from the top corner, cuts back further, bellies out, bites in sharply
+# halfway down, eases out again and runs down to a point at the foot.
+RIP = [(155, 0), (170, .036), (187, .07), (182, .125), (185, .164), (158, .246), (130, .309), (115, .364),
+       (120, .414), (142, .474), (178, .559), (164, .588), (142, .651), (130, .717), (132, .803), (108, .855),
+       (70, .928), (0, 1)]
+
+def paper_sheet(x0, y0, x1, y1, depth=.38, seed=101):
+    """The last page as a loose sheet, torn out of the book: its top, foot and outer edge are cut - square corners,
+    straight to the eye but faintly uneven - and its right edge, where a right-opening book is bound, is ripped all
+    the way down along RIP (scaled `depth` px per sketch px across, to the sheet's height down), finely frayed;
+    along the rip the paper split in its thickness, leaving a pale strip of core of uneven width.
+    Returns (outline, the rip and the inner edge of its core as polylines, the core as a polygon)."""
+    rnd = random.Random(seed)
+
+    def cut(a, b, step=18, amp=.6):   # a trimmed edge from a up to (not including) b
+        n = max(1, round(math.dist(a, b) / step))
+        return [(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-amp, amp) if k else 0),
+                 a[1] + (b[1] - a[1]) * k / n + (rnd.uniform(-amp, amp) if k else 0)) for k in range(n)]
+
+    # walk the sketch's segments a few px at a time; the rip frays finely along the way, and now and then a few
+    # fibres pull away in a small nick
+    rip = []
+    for (u0, v0), (u1, v1) in zip(RIP, RIP[1:]):
+        a, b = (x1 - u0 * depth, y0 + v0 * (y1 - y0)), (x1 - u1 * depth, y0 + v1 * (y1 - y0))
+        k = 0.0
+        while k < 1:
+            y = a[1] + (b[1] - a[1]) * k
+            fray = (1.5 * math.sin((y - y0) / (y1 - y0) * 23) + rnd.uniform(-2, 2)
+                    + (rnd.uniform(3, 7) if rnd.random() < .08 else 0)) if rip else 0
+            rip.append((a[0] + (b[0] - a[0]) * k - fray, y))
+            k += rnd.uniform(2.5, 6) / max(math.dist(a, b), 1)
+    rip.append((x1, y1))
+    inner, core = [], 3.0
+    for x, y in rip:
+        core = max(1, min(7, core + rnd.uniform(-1.2, 1.2)))
+        inner.append((x - core - rnd.uniform(0, 1.2), y))
+    pts = cut((x0, y0), rip[0]) + rip + cut(rip[-1], (x0, y1))[1:] + cut((x0, y1), (x0, y0))
+    line = lambda ps: " ".join(f"{x:.1f},{y:.1f}" for x, y in ps)
+    outline = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts) + " Z"
+    return outline, line(rip), line(inner), line(rip + inner[::-1])
+
 def footer(theme):
     p = PAL[theme]
+    dark = theme == "dark"
     css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
+    TR = FW - 100                 # the text's right edge, clear of the rip
+    # the sheet sits a few px in from the lower right, leaving room for the shadow it casts
+    outline, rip, inner, core = paper_sheet(1, 1, FW - 7, FH - 8)
+    # the rip: the paper's pale core along it, its frayed edge, and a faint shadow where the core lifts
+    rim, coreO, rimO, shadeO = ("#fff3c4", ".16", ".35", ".4") if dark else ("#ffffff", ".85", "1", ".12")
+    # the paper itself: its fine tooth lit from the upper left, a faint mottle, and the cut edge
+    toothO, mottle, mottleO = (".22", "#000", ".14") if dark else (".16", "#b08a4a", ".07")
+    edge, edgeO, dropO = ("#fff3c4", ".14", ".6") if dark else ("#bfae7c", ".7", ".22")
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {FW} {FH}" width="{FW}" height="{FH}" role="img" aria-label="{FOOT_LINE}">
 <title>{FOOT_LINE}</title>
 <defs>
 <style><![CDATA[{css}]]></style>
-<clipPath id="fcard"><rect x="0" y="0" width="{FW}" height="{FH}" rx="28" ry="28"/></clipPath>
+<clipPath id="fcard"><path d="{outline}"/></clipPath>
 <linearGradient id="fbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{p['bg1']}"/><stop offset=".5" stop-color="{p['bg0']}"/><stop offset="1" stop-color="{p['bg2']}"/></linearGradient>
 <linearGradient id="ffade" gradientUnits="userSpaceOnUse" x1="{IW-330}" y1="0" x2="{IW}" y2="0">
 {FADE_OUT}
@@ -335,12 +386,26 @@ def footer(theme):
 <mask id="fmask"><rect x="0" y="0" width="{IW}" height="{FH}" fill="url(#ffade)"/></mask>
 <filter id="blur70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
 <filter id="leafBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter>
+<filter id="fibre" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation=".7"/></filter>
+<filter id="drop" x="-5%" y="-10%" width="110%" height="130%"><feGaussianBlur stdDeviation="3.5"/></filter>
+<filter id="tooth" x="0" y="0" width="100%" height="100%">
+  <feTurbulence type="fractalNoise" baseFrequency=".5" numOctaves="2" seed="7"/>
+  <feDiffuseLighting surfaceScale="1.1" lighting-color="#fff" result="lit"><feDistantLight azimuth="225" elevation="50"/></feDiffuseLighting>
+  <feColorMatrix in="lit" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -3 0 0 0 2.3" result="shade"/>
+  <feColorMatrix in="lit" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  3 0 0 0 -2.3" result="light"/>
+  <feMerge><feMergeNode in="shade"/><feMergeNode in="light"/></feMerge>
+</filter>
+<filter id="mottle" x="0" y="0" width="100%" height="100%">
+  <feTurbulence type="fractalNoise" baseFrequency=".008" numOctaves="2" seed="11"/>
+  <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2 0 0 0 -.9"/>
+</filter>
 <filter id="ftone" color-interpolation-filters="sRGB"><feComponentTransfer>
   <feFuncR type="table" tableValues="{p['footToneR']}"/><feFuncG type="table" tableValues="{p['footToneG']}"/><feFuncB type="table" tableValues="{p['footToneB']}"/>
 </feComponentTransfer></filter>
 {leaf_def()}
 {GRAIN}
 </defs>
+<path d="{outline}" transform="translate(3 5)" fill="#000" opacity="{dropO}" filter="url(#drop)"/>
 <g clip-path="url(#fcard)">
 <rect width="{FW}" height="{FH}" fill="url(#fbg)"/>
 <g filter="url(#blur70)">
@@ -349,12 +414,17 @@ def footer(theme):
 <ellipse cx="1110" cy="390" rx="300" ry="140" fill="{p['blob3']}" opacity="{p['blob3o']}"><animate attributeName="cy" values="390;350;390" dur="19s" repeatCount="indefinite"/></ellipse>
 </g>
 <image href="data:image/jpeg;base64,{foot_b64}" x="0" y="0" width="{IW}" height="{FH}" preserveAspectRatio="xMidYMid slice" mask="url(#fmask)" filter="url(#ftone)"/>
+<rect width="{FW}" height="{FH}" fill="{mottle}" opacity="{mottleO}" filter="url(#mottle)"/>
+<rect width="{FW}" height="{FH}" opacity="{toothO}" filter="url(#tooth)"/>
 {leaves(FW, FH)}
 <rect width="{FW}" height="{FH}" filter="url(#grain)" opacity="{p['grainO']}"/>
-<text x="{FW-72}" y="196" text-anchor="end" class="foot-en" fill="{p['footText']}">{FOOT_LINE}</text>
-<line x1="{FW-252}" y1="248" x2="{FW-72}" y2="248" stroke="{p['border']}" stroke-opacity=".5"/>
-<text x="{FW-72}" y="278" text-anchor="end" class="over" fill="{p['footMono']}">{FOOT_SUB}</text>
-<rect x="1" y="1" width="{FW-2}" height="{FH-2}" rx="27" fill="none" stroke="{p['border']}" stroke-opacity="{p['borderO']}" stroke-width="1.5"/>
+<text x="{TR}" y="196" text-anchor="end" class="foot-en" fill="{p['footText']}">{FOOT_LINE}</text>
+<line x1="{TR-180}" y1="248" x2="{TR}" y2="248" stroke="{p['border']}" stroke-opacity=".5"/>
+<text x="{TR}" y="278" text-anchor="end" class="over" fill="{p['footMono']}">{FOOT_SUB}</text>
+<path d="{outline}" fill="none" stroke="{edge}" stroke-opacity="{edgeO}" stroke-width="1.6"/>
+<polygon points="{core}" fill="{rim}" fill-opacity="{coreO}" filter="url(#fibre)"/>
+<polyline points="{inner}" fill="none" stroke="#000" stroke-opacity="{shadeO}" stroke-width="1" stroke-linejoin="round"/>
+<polyline points="{rip}" fill="none" stroke="{rim}" stroke-opacity="{rimO}" stroke-width="3" stroke-linejoin="round" filter="url(#fibre)"/>
 </g>
 </svg>
 '''
@@ -365,8 +435,9 @@ def main():
     for theme in ("dark", "light"):
         for name, fn in (("hero", hero), ("divider", divider), ("footer", footer)):
             path = os.path.join(OUT, f"{name}-{theme}.svg")
-            # hero and footer art sits on the left, so their binder holes go down the right edge
-            svg = fn(theme) if name == "divider" else punch(fn(theme), theme == "dark", side="right")
+            # the hero's art sits on the left, so its binder holes go down the right edge; the divider is a rule, and
+            # the footer is the last page, torn loose from the binder
+            svg = punch(fn(theme), theme == "dark", side="right") if name == "hero" else fn(theme)
             write_svg(path, svg)
             print(f"{path}: {os.path.getsize(path)/1024:.0f} KB")
 
