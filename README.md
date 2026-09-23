@@ -54,6 +54,24 @@
   <img src="assets/divider-dark.svg" alt="" width="100%">
 </picture>
 
+### ✦ Chapter II · Stories Yet Unfolding
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-light.svg">
+  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg" alt="pinned repositories as bunkobon on a bookcase, each wearing an obi" width="100%">
+</picture>
+
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/divider-light.svg">
+  <img src="assets/divider-dark.svg" alt="" width="100%">
+</picture>
+
 ### ✦ Afterword
 
 <picture>

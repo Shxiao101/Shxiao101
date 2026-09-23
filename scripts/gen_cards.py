@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Render the profile's stats panel, bookshelf and preface & contents book page as themed SVGs, and frame the
-contribution snake.
+"""Render the profile's stats panel, bookshelf, preface & contents book page and works-in-progress ledge as themed
+SVGs, and frame the contribution snake.
 
-Runs in GitHub Actions (see .github/workflows/cards.yml) and writes dist/{stats,shelf,toc}-{dark,light}.svg.
+Runs in GitHub Actions (see .github/workflows/cards.yml) and writes dist/{stats,shelf,toc,works}-{dark,light}.svg.
 If Platane/snk has already left dist/snake-{dark,light}.svg there, they are framed as the contributions card
 (a local run without them just skips it).
 Only the standard library is used. Fonts are embedded from scripts/fonts.json (which also carries their advance
@@ -54,6 +54,14 @@ query($login: String!, $prs: String!, $issues: String!) {
       commitContributionsByRepository(maxRepositories: 100) { repository { isPrivate } contributions { totalCount } }
       contributionCalendar { weeks { contributionDays { date contributionCount } } }
     }
+    pinnedItems(first: 6, types: REPOSITORY) {
+      nodes {
+        ... on Repository {
+          name description isPrivate pushedAt stargazerCount forkCount owner { login }
+          languages(first: 10, orderBy: {field: SIZE, direction: DESC}) { edges { size node { name color } } }
+        }
+      }
+    }
   }
 }
 """
@@ -64,7 +72,7 @@ query($login: String!, $after: String) {
       totalCount
       pageInfo { hasNextPage endCursor }
       nodes {
-        name description pushedAt stargazerCount
+        name description pushedAt stargazerCount forkCount owner { login }
         languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
           edges { size node { name color } }
         }
@@ -174,6 +182,8 @@ def collect():
            if s / total_lang >= .005][:6]
     # my own repositories, latest first; the profile repository itself is where the reader already is
     own = sorted((r for r in repos if r["name"].lower() != LOGIN.lower()), key=lambda r: r["pushedAt"], reverse=True)
+    # chapter ii: the pinned repositories
+    works = [volume(r) for r in u["pinnedItems"]["nodes"] if r and not r["isPrivate"]][:WORKS_MAX]
     cc = u["contributionsCollection"]
     days = [(d["date"], d["contributionCount"]) for w in cc["contributionCalendar"]["weeks"] for d in w["contributionDays"]]
     today = dt.date.fromisoformat(days[-1][0])   # the calendar ends on github's "today"
@@ -195,7 +205,17 @@ def collect():
                  "desc": " ".join((r["description"] or "").split()),
                  "langs": [e["node"]["name"] for e in r["languages"]["edges"] if e["node"]["name"] not in SKIP_LANGS]}
                 for r in own],
+        "works": works,
     }
+
+
+def volume(r):
+    """A repository as one volume in the works-in-progress bookcase: its main language colours the cover's wash."""
+    lang = next((e["node"] for e in r["languages"]["edges"] if e["node"]["name"] not in SKIP_LANGS), None)
+    return {"name": r["name"], "owner": r["owner"]["login"], "desc": " ".join((r["description"] or "").split()),
+            "stars": r["stargazerCount"], "forks": r["forkCount"],
+            "pushed": dt.date.fromisoformat(r["pushedAt"][:10]),
+            "lang": lang["name"] if lang else "", "color": lang["color"] if lang else None}
 
 
 PAL = {
@@ -213,7 +233,10 @@ PAL = {
         bookShade="#000", bookShadeO=".55", clothDim=".2", foil="#ecd27a", foilDark="#2a1d0a",
         vase0="#7aa593", vase1="#3c5c50", metal0="#8a826c", metal1="#4a453a", stem="#8a5a32",
         ribbon0="#e0552a", ribbon1="#9c3a18", ribbonShadeO=".35", gutter="#000", gutterO=".42",
-        nextPage="#221e13", flap0="#0e0d08", flap1="#5c5238", flap2="#39321f", flap3="#282316", curlShadeO=".5", blossom="#f2a2b5"),
+        nextPage="#221e13", flap0="#0e0d08", flap1="#5c5238", flap2="#39321f", flap3="#282316", curlShadeO=".5", blossom="#f2a2b5",
+        # works-in-progress bookcase: the bunkobon jackets and the case's back panel
+        glintO=".16",
+        paper="#efe6cf", ink="#2b2418", inkMuted="#6d604a", coverDim=".1", back0="#2b1e13", back1="#1a120b"),
     "light": dict(
         bg0="#fffdf3", bg1="#f8f2d8", border="#e6dcae",
         title="#3b340c", label="#6f6434", value="#3b340c", muted="#8f8454",
@@ -227,7 +250,9 @@ PAL = {
         bookShade="#5a4520", bookShadeO=".22", clothDim="0", foil="#f3d98a", foilDark="#3a2a10",
         vase0="#b3d0c1", vase1="#6f9483", metal0="#c2b9a2", metal1="#7d7462", stem="#7a5230",
         ribbon0="#d9481c", ribbon1="#a82a10", ribbonShadeO=".16", gutter="#6b5a2a", gutterO=".16",
-        nextPage="#efe4c3", flap0="#cdbb86", flap1="#fffbef", flap2="#f3e8cb", flap3="#e4d5aa", curlShadeO=".16", blossom="#dc7690"),
+        nextPage="#efe4c3", flap0="#cdbb86", flap1="#fffbef", flap2="#f3e8cb", flap3="#e4d5aa", curlShadeO=".16", blossom="#dc7690",
+        glintO=".22",
+        paper="#fffbf2", ink="#2b2418", inkMuted="#6d604a", coverDim="0", back0="#e6d0a8", back1="#d2b88a"),
 }
 
 
@@ -767,6 +792,256 @@ def toc_card(theme, d):
             + "".join(body) + underline + ribbon + "</g>" + flap + "</svg>")
 
 
+WORKS_MAX = 6              # github pins six at most: three to a shelf, on one shelf or two
+COVER_W, COVER_H = 196, 278    # A6, a bunkobon
+FRESH_DAYS = 30            # pushed this recently, a hand-written "new chapter" note is taped to the jacket
+# the bookcase is seen square on from in front of its middle: its back panel is the opening shrunk this much toward
+# that eye, so inside each shelf the walls, and the shelf's top or the underside of the one above, show in perspective
+DEPTH = .93
+# obi colours, taken in turn as on a bookshop's new-releases shelf: (band, print, the figure that shouts)
+OBIS = [("#f4d31f", "#1d1a14", "#c8281e"), ("#1f1d1b", "#f7f1e3", "#f4d31f"),
+        ("#c8281e", "#fff8ea", "#ffe14a"), ("#f8f5ec", "#1d1a14", "#c8281e")]
+LEAD = 1.12                # title line spacing, in ems
+CAP = .72                  # Outfit's cap height, in ems
+
+
+def title_lines(name, max_w, max_h, max_lines=3):
+    """A repository name set as a cover title, as large as fits in max_lines lines and max_h px from the first
+    line's cap height to the last baseline: broken after - _ . or between camelCase words, never inside one.
+    Returns (size, lines)."""
+    parts = re.split(r"(?<=[-_.])(?=[^-_.])|(?<=[a-z0-9])(?=[A-Z])", name)
+    for size in range(26, 13, -1):
+        lines = [""]
+        for part in parts:
+            if lines[-1] and text_width("outfit", lines[-1] + part, size) > max_w:
+                lines.append("")
+            lines[-1] += part
+        if (len(lines) <= max_lines and (len(lines) - 1) * size * LEAD + size * CAP <= max_h
+                and all(text_width("outfit", ln, size) <= max_w for ln in lines)):
+            return size, lines
+    return size, [clip_text("outfit", ln, size, max_w) for ln in lines[:max_lines - 1]] + \
+        [clip_text("outfit", "".join(lines[max_lines - 1:]), size, max_w)]
+
+
+WIDE = "[\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]"   # CJK, hangul, full-width forms
+
+
+def wrap_blurb(text, size, max_w):
+    """Like wrap(), but CJK text (which has no spaces) may break between any two characters."""
+    lines, cur = [], ""
+    for tok in re.findall(WIDE + r"|[^\s" + WIDE[1:-1] + r"]+|\s+", text):
+        if cur and not tok.isspace() and text_width("jbmono", cur + tok, size) > max_w:
+            lines.append(cur.rstrip())
+            cur = ""
+        if cur or not tok.isspace():
+            cur += " " if tok.isspace() else tok
+    return lines + [cur.rstrip()] if cur.strip() else lines
+
+
+def wash(p, v, base, y0, y1):
+    """The cover art between y0 and y1: a watercolour wash in the language's colour, laid on a diagonal from the
+    lower left to the upper right with a few splatters, and cherry petals drifting down across it.  Seeded by the
+    repository's name, so each volume keeps its picture from day to day."""
+    cw = COVER_W
+    rnd = random.Random(v["name"])
+    blobs = []
+    for k in range(6):
+        t = k / 5
+        c = mix(base, rnd.choice(("#fff", "#000", p["paper"])), rnd.uniform(0, .45))
+        if k == 3:
+            c = mix(base, p["blossom"], .55)   # one wash of a second colour, as a painter would
+        blobs.append(f'<ellipse cx="{20 + t * (cw - 40) + rnd.uniform(-18, 18):.0f}" cy="{y1 - 16 - t * (y1 - y0 - 30) + rnd.uniform(-12, 12):.0f}" '
+                     f'rx="{rnd.uniform(38, 70):.0f}" ry="{rnd.uniform(26, 44):.0f}" fill="{c}" opacity="{rnd.uniform(.45, .8):.2f}"/>')
+    dots = "".join(f'<circle cx="{rnd.uniform(8, cw - 8):.0f}" cy="{rnd.uniform(y0, y1 - 4):.0f}" r="{rnd.uniform(.6, 2.2):.1f}"/>'
+                   for _ in range(12))
+    petals = []
+    for k in range(2):
+        x0, dur, beg = rnd.uniform(30, cw - 60), rnd.uniform(11, 16), -rnd.uniform(0, 14)
+        petals.append(f'<g><animateTransform attributeName="transform" type="translate" values="{x0:.0f} {y0 - 30:.0f};{x0 + 40:.0f} {(y0 + y1) / 2:.0f};{x0 + 10:.0f} {y1 + 10}" '
+                      f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
+                      f'<path d="{BLOSSOM_PETAL}" transform="scale(1.5)" fill="{p["blossom"]}" opacity=".85">'
+                      f'<animateTransform attributeName="transform" type="rotate" values="0;200;360" additive="sum" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></path></g>')
+    return (f'<g filter="url(#wash)">{"".join(blobs)}</g><g fill="{base}" opacity=".45">{dots}</g>', "".join(petals))
+
+
+def poly(*pts):
+    return "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts) + " Z"
+
+
+def cover(p, i, v, today, shade=0, number=1, band=0):
+    """One bunkobon standing face out, drawn at the origin.  It opens from the right, so the jacket folds round
+    the spine at the right edge.  The paper jacket carries the catalogue
+    number, title and author in a band across the top and a watercolour below; the obi (colour OBIS[band])
+    carries the description as its copy and the stars in a round badge.  A glint crosses the jacket now and then.
+    `shade` darkens the wash, so two volumes in one language aren't twins; `number` counts the author's volumes,
+    for the catalogue number."""
+    cw, ch = COVER_W, COVER_H
+    cx = cw / 2
+    ink, dim = p["ink"], float(p["coverDim"])
+    base = mix(v["color"] or p["langs"][i % len(p["langs"])], "#000", shade)
+    bg, oink, hot = OBIS[band % len(OBIS)]
+    oy = round(ch * .66)         # top of the obi
+    # the title band: catalogue number and volume, then the title and the author, centred
+    size, lines = title_lines(v["name"], cw - 36, 62)
+    lead = size * LEAD
+    ty = 42 + size * CAP
+    last = ty + (len(lines) - 1) * lead
+    top = last + 34              # the author's line; below it the picture begins
+    art, petals = wash(p, v, base, top - 14, oy)
+    # plain paper over the top of the jacket, fading out below the author so the wash bleeds up into it
+    fade = (f'<linearGradient id="bf{i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["paper"]}" stop-opacity=".94"/>'
+            f'<stop offset="{(top - 4) / (top + 26):.3f}" stop-color="{p["paper"]}" stop-opacity=".94"/>'
+            f'<stop offset="1" stop-color="{p["paper"]}" stop-opacity="0"/></linearGradient>')
+    title = "".join(f'<text x="{cx}" y="{ty + j * lead:.1f}" text-anchor="middle" class="t" font-size="{size}" fill="{ink}">{esc(ln)}</text>'
+                    for j, ln in enumerate(lines))
+    head_row = (f'<text x="16" y="25" class="m" font-size="9.5" fill="{p["inkMuted"]}">{esc(v["owner"][:1].lower())}-1-{number}</text>'
+                f'<text x="{cw - 18}" y="26" text-anchor="end" class="h" font-size="17" fill="{p["inkMuted"]}">vol. {ROMAN[i]}</text>')
+    author = (f'<rect x="{cx - 14}" y="{last + 10:.1f}" width="28" height=".8" fill="{ink}" opacity=".45"/>'
+              f'<text x="{cx}" y="{last + 26:.1f}" text-anchor="middle" class="m" font-size="10.5" letter-spacing="1.5" fill="{p["inkMuted"]}">'
+              f'{esc(clip_text("jbmono", v["owner"], 10.5, cw - 40))}</text>')
+    jacket = (f'<rect width="{cw}" height="{ch}" fill="{p["paper"]}"/>' + art
+              + f'<rect width="{cw}" height="{top + 26:.1f}" fill="url(#bf{i})"/>'
+              + petals
+              + f'<rect width="{cw}" height="{ch}" filter="url(#paperG)" opacity=".07"/>'
+              # the jacket's fold round the spine, on the right
+              f'<path d="M{cw - 7},0 V{ch}" stroke="#000" stroke-opacity=".08"/><path d="M{cw - 8.2},0 V{ch}" stroke="#fff" stroke-opacity=".2"/>'
+              + head_row + title + author)
+    note = ""
+    if (today - v["pushed"]).days <= FRESH_DAYS:   # a note in a shop assistant's hand, taped on: still being written
+        note = (f'<g transform="translate({cw - 46} {oy - 22}) rotate(7)">'
+                f'<rect x="-26" y="-15" width="54" height="34" fill="#000" opacity=".18"/>'
+                f'<rect x="-28" y="-17" width="54" height="34" fill="#fff7cf"/>'
+                f'<rect x="-12" y="-22" width="24" height="9" fill="{p["blossom"]}" opacity=".6" transform="rotate(-5)"/>'
+                f'<text x="-1" y="0" text-anchor="middle" class="h" font-size="18" fill="#c8281e">new</text>'
+                f'<text x="-1" y="12" text-anchor="middle" class="h" font-size="12.5" fill="{ink}">chapter!</text></g>')
+    # the obi: the description as its copy in bold, the stars in a round badge on the right, the language at the foot
+    badge = ""
+    bw = cw - 28
+    if v["stars"]:
+        bw -= 58
+        bx, by, on = cw - 38, oy + 42, "#fff" if luma(hot) < .5 else "#1d1a14"
+        num = fmt(v["stars"])
+        ns = min(21, 42 / text_width("outfit", num, 1))
+        badge = (f'<circle cx="{bx}" cy="{by}" r="27" fill="{hot}"/>'
+                 f'<circle cx="{bx}" cy="{by}" r="23.5" fill="none" stroke="{on}" stroke-opacity=".45" stroke-width=".8"/>'
+                 f'<text x="{bx}" y="{by - 11}" text-anchor="middle" class="m" font-size="6.5" fill="{on}">loved by</text>'
+                 f'<text x="{bx}" y="{by + ns * .36:.1f}" text-anchor="middle" class="t" font-size="{ns:.1f}" fill="{on}">{num}</text>'
+                 f'<text x="{bx}" y="{by + 17}" text-anchor="middle" class="m" font-size="6.5" fill="{on}">'
+                 f'reader{"s" if v["stars"] != 1 else ""}</text>')
+    bs = 12.5
+    copy = wrap_blurb(v["desc"], bs, bw) or ["(no blurb yet)"]
+    if len(copy) > 3:
+        copy = copy[:2] + [clip_text("jbmono", copy[2].rstrip(" ,.;:-，。、") + "...", bs, bw)]
+    obi = (f'<rect y="{oy}" width="{cw}" height="{ch - oy}" fill="{bg}"/>'
+           f'<path d="M{cw - 7},{oy} V{ch}" stroke="#000" stroke-opacity=".1"/>'
+           f'<rect y="{oy}" width="{cw}" height="1" fill="#fff" opacity=".45"/>'
+           + "".join(f'<text x="14" y="{oy + 27 + j * 17}" class="m" font-size="{bs}" font-weight="700" fill="{oink}">{esc(ln)}</text>'
+                     for j, ln in enumerate(copy))
+           + badge +
+           f'<text x="14" y="{ch - 9}" class="m" font-size="9" fill="{oink}" opacity=".75">{esc(clip_text("jbmono", v["lang"], 9, cw - 28))}</text>')
+    glint = (f'<g transform="translate(-120 0)">'
+             f'<animateTransform attributeName="transform" type="translate" values="-120 0;-120 0;300 0;300 0" keyTimes="0;.84;.93;1" '
+             f'calcMode="spline" keySplines="0 0 1 1;{EASE};0 0 1 1" dur="15s" begin="{3 + i * 1.6:.1f}s" repeatCount="indefinite"/>'
+             f'<rect y="-20" width="70" height="{ch + 40}" transform="skewX(-18)" fill="url(#glint)"/></g>')
+    about = f"{v['name']}: {v['desc']}" if v["desc"] else v["name"]
+    return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}" rx="2"/></clipPath>{fade}',
+            f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
+            f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{note}')
+
+
+def works_card(theme, d):
+    """Chapter ii, a bookcase rather than a card: the pinned repositories as bunkobon standing face out, three to a
+    shelf - one shelf for up to three, two (the top one fuller) for four to six.  Seen square on from in front of
+    its middle (DEPTH), so each shelf shows its walls, and its floor or ceiling, in perspective."""
+    p = PAL[theme]
+    vols = d["works"]
+    cw, ch = COVER_W, COVER_H
+    half = (len(vols) + 1) // 2
+    rows = [vols[:half], vols[half:]] if len(vols) > 3 else [vols]
+    gap, pad, side, crown, plinth, board, head = 20, 34, 22, 22, 14, 22, 34
+    W = 3 * cw + 2 * gap + 2 * (pad + side)
+    tier = head + ch + board
+    H = crown + len(rows) * tier + plinth
+    ex, ey = W / 2, H / 2
+
+    def back(x, y, k=DEPTH):     # a point on the front plane, moved back into the case until it shrinks by k
+        return ex + (x - ex) * k, ey + (y - ey) * k
+
+    at = 1 - .3 * (1 - DEPTH)    # the books stand a third of the way back
+    wood0, wood1, b0, b1 = p["wood0"], p["wood1"], p["back0"], p["back1"]
+    clips, body = [], []
+    for t, row in enumerate(rows):
+        x0, x1, y0, yf = side, W - side, crown + t * tier, crown + t * tier + head + ch
+        (bx0, by0), (bx1, byf) = back(x0, y0), back(x1, yf)
+        # inside the opening: the back panel, then the ceiling, floor and walls running back to it
+        inner = (f'<rect x="{bx0:.1f}" y="{by0:.1f}" width="{bx1 - bx0:.1f}" height="{byf - by0:.1f}" fill="url(#back)"/>'
+                 f'<rect x="{bx0:.1f}" y="{by0:.1f}" width="{bx1 - bx0:.1f}" height="40" fill="url(#under)"/>'
+                 f'<path d="{poly((x0, y0), (x1, y0), (bx1, by0), (bx0, by0))}" fill="{mix(b1, "#000", .35)}"/>'
+                 f'<path d="{poly((x0, yf), (x1, yf), (bx1, byf), (bx0, byf))}" fill="url(#floor)"/>'
+                 f'<path d="{poly((x0, y0), (bx0, by0), (bx0, byf), (x0, yf))}" fill="{mix(b1, "#000", .2)}"/>'
+                 f'<path d="{poly((x1, y0), (bx1, by0), (bx1, byf), (x1, yf))}" fill="{mix(b0, "#fff", .06)}"/>'
+                 f'<path d="M{x0},{y0} L{bx0:.1f},{by0:.1f} L{bx1:.1f},{by0:.1f} L{x1},{y0} M{x0},{yf} L{bx0:.1f},{byf:.1f} L{bx1:.1f},{byf:.1f} L{x1},{yf} '
+                 f'M{bx0:.1f},{by0:.1f} V{byf:.1f} M{bx1:.1f},{by0:.1f} V{byf:.1f}" fill="none" stroke="#000" stroke-opacity=".18"/>')
+        n = len(row)
+        x = W / 2 - (n * cw + (n - 1) * gap) / 2
+        shadows, books = [], []
+        for k, v in enumerate(row):
+            i = sum(len(r) for r in rows[:t]) + k
+            twins = sum(1 for u in vols[:i] if u["lang"] == v["lang"])
+            number = 1 + sum(1 for u in vols[:i] if u["owner"] == v["owner"])
+            clip, art = cover(p, i, v, d["today"], .14 * twins, number, i + t)   # each shelf starts one obi colour on
+            clips.append(clip)
+            bx, by = back(x, yf - ch, at)                      # the book, set back a little from the shelf's edge
+            # its shadow on the back panel, down and to the right of the light, and where it meets the shelf
+            sx, sy = back(x, yf - ch)
+            shadows.append(f'<rect x="{sx + 9:.1f}" y="{sy + 7:.1f}" width="{cw * DEPTH:.1f}" height="{ch * DEPTH - 7:.1f}"/>'
+                           f'<rect x="{bx + 2:.1f}" y="{by + ch * at - 5:.1f}" width="{cw * at + 4:.1f}" height="9" rx="4"/>')
+            books.append(f'<g transform="translate({bx:.1f} {by:.1f}) scale({at:.4f})"><g class="cv" style="animation-delay:{.2 + i * .15:.2f}s">{art}</g></g>')
+            x += cw + gap
+        if not row:
+            books.append(f'<text x="{W / 2}" y="{yf - ch / 2:.0f}" text-anchor="middle" class="h" font-size="28" '
+                         f'fill="{p["muted"]}">nothing pinned yet</text>')
+        landed = .2 + (sum(len(r) for r in rows[:t]) + n) * .15 + .6
+        clips.append(f'<clipPath id="tier{t}"><rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{yf - y0}"/></clipPath>')
+        body.append(f'<g clip-path="url(#tier{t})">{inner}'
+                    f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".4" filter="url(#wshade)">{"".join(shadows)}</g></g></g>'
+                    + "".join(books)
+                    # the shelf's front edge
+                    + f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="{board}" fill="url(#wood)"/>'
+                    f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="1.2" fill="#fff" opacity=".3"/>'
+                    f'<path d="M{x0},{yf + board * .45:.1f} C{W * .35:.0f},{yf + board * .45 - 1.5:.1f} {W * .6:.0f},{yf + board * .45 + 2:.1f} {x1},{yf + board * .45:.1f}" '
+                    f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".25" stroke-width=".8"/>')
+    frame = (f'<rect width="{side}" height="{H}" fill="url(#post)"/><rect x="{W - side}" width="{side}" height="{H}" fill="url(#post)"/>'
+             f'<rect width="{W}" height="{crown}" fill="url(#wood)"/><rect width="{W}" height="1.2" fill="#fff" opacity=".3"/>'
+             f'<rect y="{H - plinth}" width="{W}" height="{plinth}" fill="{mix(wood1, "#000", .15)}"/>'
+             f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" rx="2" fill="none" stroke="{p["woodLine"]}" stroke-opacity=".5"/>')
+    css = (fontface("caveat") + ".h{font-family:'Caveat',cursive;font-weight:600}"
+           "@keyframes up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}"
+           ".cv{animation:up .8s cubic-bezier(.3,.7,.4,1) both}"
+           "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}")
+    label = esc(f"works in progress, a bookcase of {len(vols)} pinned repositories: "
+                f"{', '.join(v['name'] for v in vols) or 'none yet'}")
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">'
+            f'<defs><style><![CDATA[{CSS}{css}]]></style>{"".join(clips)}'
+            f'<linearGradient id="board" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".12"/>'
+            f'<stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".14"/></linearGradient>'
+            # watercolour: ragged, bleeding edges; and the jacket paper's grain
+            f'<filter id="wash" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="3" seed="4"/>'
+            f'<feDisplacementMap in="SourceGraphic" scale="30" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation="3"/></filter>'
+            f'<filter id="paperG" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/>'
+            f'<feColorMatrix type="saturate" values="0"/></filter>'
+            f'<linearGradient id="glint" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/>'
+            f'<stop offset=".5" stop-color="#fff" stop-opacity="{p["glintO"]}"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>'
+            f'<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{wood0}"/><stop offset="1" stop-color="{wood1}"/></linearGradient>'
+            f'<linearGradient id="post" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{wood1}"/><stop offset=".5" stop-color="{wood0}"/>'
+            f'<stop offset="1" stop-color="{wood1}"/></linearGradient>'
+            f'<linearGradient id="floor" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="{mix(wood0, "#fff", .1)}"/><stop offset="1" stop-color="{mix(wood1, "#000", .1)}"/></linearGradient>'
+            f'<linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{b0}"/><stop offset="1" stop-color="{b1}"/></linearGradient>'
+            f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
+            f'<filter id="wshade" x="-20%" y="-10%" width="140%" height="120%"><feGaussianBlur stdDeviation="5"/></filter></defs>'
+            + "".join(body) + frame + "</svg>")
+
+
 def snake_card(theme, raw, d):
     """The contributions card: snk's svg nested in a card like the others, scaled up to 16px cells on a 20px pitch.
     No total in the header: the stats panel already gives the all-time one, and a 12-month total beside it never
@@ -812,10 +1087,10 @@ def main():
     d = collect()
     wrap_snake(d)
     for theme in ("dark", "light"):
-        for name, fn in (("stats", stats_panel), ("shelf", shelf_card), ("toc", toc_card)):
+        for name, fn in (("stats", stats_panel), ("shelf", shelf_card), ("toc", toc_card), ("works", works_card)):
             path = os.path.join(OUT, f"{name}-{theme}.svg")
             svg = fn(theme, d)
-            if name != "toc":   # the contents page is a book page, with a curled corner instead of binder holes
+            if name not in ("toc", "works"):   # a book page with a curled corner, and a bookcase: no binder holes
                 # the shelf's holes go down the right edge, past the vase, so the row of books starts on a clean edge
                 svg = punch(svg, theme == "dark", side="right" if name == "shelf" else "left")
             write_svg(path, svg)
