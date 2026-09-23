@@ -331,18 +331,30 @@ def paper_sheet(x0, y0, x1, y1, seed=101):
         return [(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-amp, amp) if k else 0),
                  a[1] + (b[1] - a[1]) * k / n + (rnd.uniform(-amp, amp) if k else 0)) for k in range(n)]
 
-    rip, inner, y, walk, core = [], [], y0, 0.0, 3.0
+    ys, into, cores, y, walk, drift, core = [], [], [], y0, 0.0, 0.0, 3.0
     while y < y1:
         t = (y - y0) / (y1 - y0)
-        walk = max(-12, min(12, walk + rnd.uniform(-2.8, 2.8)))
-        into = max(1, 13 + walk + 6 * math.sin(t * 4 + 1) + 2 * math.sin(t * 19)
-                   + rnd.uniform(-2.5, 2.5) + (rnd.uniform(5, 12) if rnd.random() < .08 else 0))
+        # the hand tearing it swings: the rip keeps drifting one way for a while, then comes round
+        drift = drift * .9 + rnd.uniform(-.9, .9)
+        walk = max(-14, min(14, walk + drift))
+        if abs(walk) == 14:
+            drift = -drift * .5
+        ys.append(y)
+        into.append(16 + walk + 5 * math.sin(t * 6 + 1)
+                    + rnd.uniform(-1.5, 1.5) + (rnd.uniform(5, 10) if rnd.random() < .06 else 0))
         core = max(1, min(10, core + rnd.uniform(-1.6, 1.6)))
-        rip.append((x1 - into, y))
-        inner.append((x1 - into - core - rnd.uniform(0, 1.2), y))
+        cores.append(core)
         y += rnd.uniform(2.5, 6)
-    rip.append((x1 - 13 + rnd.uniform(-3, 3), y1))
-    inner.append((rip[-1][0] - core, y1))
+    ys.append(y1)
+    into.append(into[-1])
+    cores.append(core)
+
+    def smooth(v, r=3):             # round off the spikes, keeping the big swings and bites
+        return [sum(v[max(0, i - r):i + r + 1]) / len(v[max(0, i - r):i + r + 1]) for i in range(len(v))]
+
+    into, cores = smooth(into, 2), smooth(cores)
+    rip = [(x1 - max(1, d + rnd.uniform(-.6, .6)), y) for d, y in zip(into, ys)]   # a faint fray on top
+    inner = [(x - c - rnd.uniform(0, .8), y) for (x, y), c in zip(rip, cores)]
     pts = cut((x0, y0), rip[0]) + rip + cut(rip[-1], (x0, y1))[1:] + cut((x0, y1), (x0, y0))
     line = lambda ps: " ".join(f"{x:.1f},{y:.1f}" for x, y in ps)
     outline = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts) + " Z"
