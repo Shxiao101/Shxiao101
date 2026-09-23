@@ -371,7 +371,8 @@ def footer(theme):
     outline, rip, inner, core = paper_sheet(1, 1, FW - 7, FH - 8)
     # the rip: the paper's pale core along it, its frayed edge, and a faint shadow where the core lifts
     rim, coreO, rimO, shadeO = ("#fff3c4", ".16", ".35", ".4") if dark else ("#ffffff", ".85", "1", ".12")
-    # the paper itself: its fine tooth lit from the upper left, a faint mottle, and the cut edge
+    # the paper itself: its fine tooth lit from the upper left, a faint mottle, and the cut edge; the picture is
+    # printed over the tooth, so it stays sharp and the paper only shows through where it fades out
     toothO, mottle, mottleO = (".22", "#000", ".14") if dark else (".16", "#b08a4a", ".07")
     edge, edgeO, dropO = ("#fff3c4", ".14", ".6") if dark else ("#bfae7c", ".7", ".22")
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {FW} {FH}" width="{FW}" height="{FH}" role="img" aria-label="{FOOT_LINE}">
@@ -413,9 +414,9 @@ def footer(theme):
 <ellipse cx="900" cy="10" rx="320" ry="110" fill="{p['blob2']}" opacity="{p['blob2o']}"/>
 <ellipse cx="1110" cy="390" rx="300" ry="140" fill="{p['blob3']}" opacity="{p['blob3o']}"><animate attributeName="cy" values="390;350;390" dur="19s" repeatCount="indefinite"/></ellipse>
 </g>
-<image href="data:image/jpeg;base64,{foot_b64}" x="0" y="0" width="{IW}" height="{FH}" preserveAspectRatio="xMidYMid slice" mask="url(#fmask)" filter="url(#ftone)"/>
 <rect width="{FW}" height="{FH}" fill="{mottle}" opacity="{mottleO}" filter="url(#mottle)"/>
 <rect width="{FW}" height="{FH}" opacity="{toothO}" filter="url(#tooth)"/>
+<image href="data:image/jpeg;base64,{foot_b64}" x="0" y="0" width="{IW}" height="{FH}" preserveAspectRatio="xMidYMid slice" mask="url(#fmask)" filter="url(#ftone)"/>
 {leaves(FW, FH)}
 <rect width="{FW}" height="{FH}" filter="url(#grain)" opacity="{p['grainO']}"/>
 <text x="{TR}" y="196" text-anchor="end" class="foot-en" fill="{p['footText']}">{FOOT_LINE}</text>
