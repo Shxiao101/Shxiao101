@@ -843,10 +843,10 @@ def wrap_blurb(text, size, max_w):
     return lines + [cur.rstrip()] if cur.strip() else lines
 
 
-def wash(p, v, i, shade, oy):
-    """The cover art: a watercolour wash in the language's colour, laid on a diagonal from the lower left to the
-    upper right with a few splatters, and cherry petals drifting down across it.  Seeded by the repository's name,
-    so each volume keeps its picture from day to day."""
+def wash(p, v, i, shade, y0, y1):
+    """The cover art between y0 and y1: a watercolour wash in the language's colour, laid on a diagonal from the
+    lower left to the upper right with a few splatters, and cherry petals drifting down across it.  Seeded by the
+    repository's name, so each volume keeps its picture from day to day."""
     cw = COVER_W
     rnd = random.Random(v["name"])
     base = mix(v["color"] or p["langs"][i % len(p["langs"])], "#000", shade)
@@ -856,86 +856,85 @@ def wash(p, v, i, shade, oy):
         c = mix(base, rnd.choice(("#fff", "#000", p["paper"])), rnd.uniform(0, .45))
         if k == 3:
             c = mix(base, p["blossom"], .55)   # one wash of a second colour, as a painter would
-        blobs.append(f'<ellipse cx="{20 + t * (cw - 40) + rnd.uniform(-18, 18):.0f}" cy="{oy - 24 - t * (oy - 80) + rnd.uniform(-16, 16):.0f}" '
-                     f'rx="{rnd.uniform(38, 70):.0f}" ry="{rnd.uniform(28, 52):.0f}" fill="{c}" opacity="{rnd.uniform(.4, .75):.2f}"/>')
-    dots = "".join(f'<circle cx="{rnd.uniform(8, cw - 8):.0f}" cy="{rnd.uniform(30, oy - 6):.0f}" r="{rnd.uniform(.6, 2.2):.1f}"/>'
-                   for _ in range(14))
+        blobs.append(f'<ellipse cx="{20 + t * (cw - 40) + rnd.uniform(-18, 18):.0f}" cy="{y1 - 16 - t * (y1 - y0 - 30) + rnd.uniform(-12, 12):.0f}" '
+                     f'rx="{rnd.uniform(38, 70):.0f}" ry="{rnd.uniform(26, 44):.0f}" fill="{c}" opacity="{rnd.uniform(.45, .8):.2f}"/>')
+    dots = "".join(f'<circle cx="{rnd.uniform(8, cw - 8):.0f}" cy="{rnd.uniform(y0, y1 - 4):.0f}" r="{rnd.uniform(.6, 2.2):.1f}"/>'
+                   for _ in range(12))
     petals = []
     for k in range(2):
         x0, dur, beg = rnd.uniform(30, cw - 60), rnd.uniform(11, 16), -rnd.uniform(0, 14)
-        petals.append(f'<g><animateTransform attributeName="transform" type="translate" values="{x0:.0f} -12;{x0 + 40:.0f} {oy / 2:.0f};{x0 + 10:.0f} {oy + 10}" '
+        petals.append(f'<g><animateTransform attributeName="transform" type="translate" values="{x0:.0f} {y0 - 30:.0f};{x0 + 40:.0f} {(y0 + y1) / 2:.0f};{x0 + 10:.0f} {y1 + 10}" '
                       f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
                       f'<path d="{BLOSSOM_PETAL}" transform="scale(1.5)" fill="{p["blossom"]}" opacity=".85">'
                       f'<animateTransform attributeName="transform" type="rotate" values="0;200;360" additive="sum" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></path></g>')
-    return (f'<g filter="url(#wash)">{"".join(blobs)}</g><g fill="{base}" opacity=".45">{dots}</g>'
-            + "".join(petals))
+    return (f'<g filter="url(#wash)">{"".join(blobs)}</g><g fill="{base}" opacity=".45">{dots}</g>', "".join(petals))
 
 
 def cover(p, i, v, today, shade=0):
-    """One bunkobon face out, drawn at the origin: an A6 paperback in a paper jacket with a watercolour on it,
-    the title set vertically in a label at the top right with the author beneath, the catalogue number at the top
-    left and the imprint at the foot, and an obi carrying the description as the blurb.  A glint of light crosses
-    the jacket now and then.  `shade` darkens the wash, so two volumes in one language aren't twins."""
+    """One bunkobon face out, drawn at the origin: an A6 paperback in a paper jacket, the catalogue number,
+    title and author in a band of plain paper across the top, a watercolour below it with the imprint at its foot,
+    and an obi carrying the description as the blurb.  A glint of light crosses the jacket now and then.
+    `shade` darkens the wash, so two volumes in one language aren't twins."""
     cw, ch = COVER_W, COVER_H
+    cx = cw / 2
     ink, halo = p["ink"], f'stroke="{p["paper"]}" stroke-width="3" stroke-linejoin="round" paint-order="stroke"'
-    oy = round(ch * .64)         # top of the obi
-    # the title label: columns read top to bottom, the first on the right; rotated, glyphs sit right of the baseline
-    right, top = cw - 14, 14
-    size, cols = title_lines(v["name"], oy - 64, 62)
+    oy = round(ch * .7)          # top of the obi
+    # the title band: catalogue number and volume, then the title and the author, centred
+    size, lines = title_lines(v["name"], cw - 36, 62)
     lead = size * LEAD
-    bx = [right - 9 - size * CAP - j * lead for j in range(len(cols))]
-    owner = clip_text("jbmono", v["owner"], 10, oy - 64)
-    ax = bx[-1] - size * .25 - 6 - 10 * CAP        # the author's column, left of the title
-    left = ax - 9
-    lh = max([text_width("outfit", c, size) for c in cols] + [text_width("jbmono", owner, 10) + 30]) + 22
-    label = (f'<rect x="{left:.1f}" y="{top}" width="{right - left:.1f}" height="{lh:.1f}" fill="{p["paper"]}" opacity=".94"/>'
-             f'<rect x="{left + 3:.1f}" y="{top + 3}" width="{right - left - 6:.1f}" height="{lh - 6:.1f}" fill="none" stroke="{ink}" stroke-opacity=".35" stroke-width=".6"/>'
-             + "".join(f'<text transform="translate({x:.1f} {top + 11}) rotate(90)" class="t" font-size="{size}" fill="{ink}">{esc(c)}</text>'
-                       for x, c in zip(bx, cols))
-             + f'<text transform="translate({ax:.1f} {top + lh - 11:.1f}) rotate(90)" text-anchor="end" class="m" font-size="10" '
-               f'letter-spacing="1" fill="{p["inkMuted"]}">{esc(owner)}</text>')
-    jacket = (f'<rect width="{cw}" height="{ch}" rx="2" fill="{p["paper"]}"/>'
-              + wash(p, v, i, shade, oy) +
-              f'<rect width="{cw}" height="{ch}" filter="url(#paperG)" opacity=".07"/>'
+    ty = 42 + size * CAP
+    last = ty + (len(lines) - 1) * lead
+    band = last + 34             # the author's line; below it the picture begins
+    art, petals = wash(p, v, i, shade, band - 14, oy)
+    # plain paper over the top of the jacket, fading out below the author so the wash bleeds up into it
+    fade = (f'<linearGradient id="bf{i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["paper"]}" stop-opacity=".94"/>'
+            f'<stop offset="{(band - 4) / (band + 26):.3f}" stop-color="{p["paper"]}" stop-opacity=".94"/>'
+            f'<stop offset="1" stop-color="{p["paper"]}" stop-opacity="0"/></linearGradient>')
+    title = "".join(f'<text x="{cx}" y="{ty + j * lead:.1f}" text-anchor="middle" class="t" font-size="{size}" fill="{ink}">{esc(ln)}</text>'
+                    for j, ln in enumerate(lines))
+    head_row = (f'<text x="16" y="25" class="m" font-size="9.5" fill="{p["inkMuted"]}">{esc(v["owner"][:1].lower())}-1-{i + 1}</text>'
+                f'<text x="{cw - 16}" y="26" text-anchor="end" class="h" font-size="17" fill="{p["inkMuted"]}">vol. {ROMAN[i]}</text>')
+    author = (f'<rect x="{cx - 14}" y="{last + 10:.1f}" width="28" height=".8" fill="{ink}" opacity=".45"/>'
+              f'<text x="{cx}" y="{last + 26:.1f}" text-anchor="middle" class="m" font-size="10.5" letter-spacing="1.5" fill="{p["inkMuted"]}">'
+              f'{esc(clip_text("jbmono", v["owner"], 10.5, cw - 40))}</text>')
+    lang = clip_text("jbmono", v["lang"], 9, 70)
+    jacket = (f'<rect width="{cw}" height="{ch}" rx="2" fill="{p["paper"]}"/>' + art
+              + f'<rect width="{cw}" height="{band + 26:.1f}" fill="url(#bf{i})"/>'
+              + petals
+              + f'<rect width="{cw}" height="{ch}" filter="url(#paperG)" opacity=".07"/>'
               f'<path d="M7,0 V{ch}" stroke="#000" stroke-opacity=".06"/><path d="M8.2,0 V{ch}" stroke="#fff" stroke-opacity=".18"/>'   # the scored fold by the spine
-              + label +
-              f'<text x="16" y="26" class="m" font-size="10" fill="{p["inkMuted"]}" {halo}>{esc(v["owner"][:1].lower())}-1-{i + 1}</text>'
-              f'<text x="16" y="46" class="h" font-size="18" fill="{ink}" {halo}>vol. {ROMAN[i]}</text>'
-              f'<g transform="translate(23 {oy - 16})"><circle r="7.5" fill="{p["paper"]}" stroke="{ink}" stroke-width="1"/>'
-              f'<path d="{star_path(4)}" fill="{ink}"/></g>'
-              f'<text x="35" y="{oy - 12.5}" class="m" font-size="9" letter-spacing=".5" fill="{ink}" {halo}>{esc(IMPRINT)}</text>'
+              + head_row + title + author
+              + f'<g transform="translate(22 {oy - 14})"><circle r="7" fill="{p["paper"]}" stroke="{ink}" stroke-width="1"/>'
+              f'<path d="{star_path(3.8)}" fill="{ink}"/></g>'
+              f'<text x="33" y="{oy - 10.5}" class="m" font-size="9" letter-spacing=".5" fill="{ink}" {halo}>{esc(IMPRINT)}</text>'
+              f'<text x="{cw - 12}" y="{oy - 10.5}" text-anchor="end" class="m" font-size="9" fill="{ink}" {halo}>{esc(lang)}</text>'
               f'<rect width="{cw}" height="{oy}" fill="#000" opacity="{p["coverDim"]}"/>'
               f'<rect width="{cw}" height="{ch}" rx="2" fill="url(#board)"/>')
-    cx = cw / 2
     head = clip_text("caveat", obi_line(v), 22, cw - 16)
     bw, bs = cw - 30, 12
     blurb = wrap_blurb(v["desc"], bs, bw) or ["(no blurb yet)"]
     if len(blurb) > 2:
         blurb = [blurb[0], clip_text("jbmono", blurb[1].rstrip(" ,.;:-，。、") + "...", bs, bw)]
-    forks = f"{v['forks']} fork{'s' if v['forks'] != 1 else ''}"
-    fw = text_width("jbmono", forks, 10.5)
     sticker = ""
     if (today - v["pushed"]).days <= FRESH_DAYS:   # a shop sticker on the jacket: still being written
-        sticker = (f'<g transform="translate(42 {round(ch * .45)}) rotate(-12)"><circle r="23" fill="{p["obiInk"]}"/>'
+        sticker = (f'<g transform="translate({cw - 36} {band + 16:.1f}) rotate(12)"><circle r="23" fill="{p["obiInk"]}"/>'
                    f'<circle r="20" fill="none" stroke="{p["obi"]}" stroke-opacity=".6" stroke-dasharray="2 2"/>'
                    f'<text y="1" text-anchor="middle" class="h" font-size="18" fill="{p["obi"]}">new</text>'
                    f'<text y="11" text-anchor="middle" class="m" font-size="7" letter-spacing=".4" fill="{p["obi"]}">chapter</text></g>')
     obi = (f'<path d="M0,{oy} H{cw} V{ch - 2} Q{cw},{ch} {cw - 2},{ch} H2 Q0,{ch} 0,{ch - 2} Z" fill="{p["obi"]}"/>'
            f'<path d="M7,{oy} V{ch}" stroke="#000" stroke-opacity=".06"/>'
            f'<rect y="{oy}" width="{cw}" height="1" fill="#fff" opacity=".5"/>'
-           f'<text x="{cx}" y="{oy + 27}" text-anchor="middle" class="h" font-size="22" fill="{p["obiInk"]}">{esc(head)}</text>'
-           f'<rect x="{cx - 18}" y="{oy + 35}" width="36" height="1" fill="{p["obiInk"]}" opacity=".45"/>'
-           + "".join(f'<text x="{cx}" y="{oy + 54 + j * 17}" text-anchor="middle" class="m" font-size="{bs}" fill="{p["obiText"]}">{esc(ln)}</text>'
-                     for j, ln in enumerate(blurb)) +
-           f'<text x="15" y="{ch - 12}" class="m" font-size="10.5" fill="{p["obiMuted"]}">{esc(clip_text("jbmono", v["lang"], 10.5, bw - fw - 16))}</text>'
-           f'<text x="{cw - 14}" y="{ch - 12}" text-anchor="end" class="m" font-size="10.5" fill="{p["obiMuted"]}">{forks}</text>')
+           f'<text x="{cx}" y="{oy + 26}" text-anchor="middle" class="h" font-size="22" fill="{p["obiInk"]}">{esc(head)}</text>'
+           f'<rect x="{cx - 18}" y="{oy + 33}" width="36" height="1" fill="{p["obiInk"]}" opacity=".45"/>'
+           + "".join(f'<text x="{cx}" y="{oy + 51 + j * 16}" text-anchor="middle" class="m" font-size="{bs}" fill="{p["obiText"]}">{esc(ln)}</text>'
+                     for j, ln in enumerate(blurb)))
     glint = (f'<g transform="translate(-120 0)">'
              f'<animateTransform attributeName="transform" type="translate" values="-120 0;-120 0;300 0;300 0" keyTimes="0;.84;.93;1" '
              f'calcMode="spline" keySplines="0 0 1 1;{EASE};0 0 1 1" dur="15s" begin="{3 + i * 1.6:.1f}s" repeatCount="indefinite"/>'
              f'<rect y="-20" width="70" height="{ch + 40}" transform="skewX(-18)" fill="url(#glint)"/></g>')
     about = f"{v['name']}: {v['desc']}" if v["desc"] else v["name"]
-    return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}" rx="2"/></clipPath>',
-            f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{sticker}{obi}{glint}</g>')
+    return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}" rx="2"/></clipPath>{fade}',
+            f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{obi}{sticker}{glint}</g>')
 
 
 def works_card(theme, d):
