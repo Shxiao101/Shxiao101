@@ -951,7 +951,7 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
 
 
 WORKS_W = 1200             # as wide as the other cards
-WORKS_IW = 330             # works.jpg (660x800) at half size, pinned to the left edge
+WORKS_TUCK = 60            # how far the picture runs on under the bookcase, so its fade ends behind it
 WORKS_M = 22               # the card's margin round the bookcase
 
 
@@ -1002,7 +1002,7 @@ def bookcase(p, d, rows):
                            f'<rect x="{bx + 2:.1f}" y="{by + ch * at - 5:.1f}" width="{cw * at + 4:.1f}" height="9" rx="4"/>')
             books.append(f'<g transform="translate({bx:.1f} {by:.1f}) scale({at:.4f})"><g class="cv" style="animation-delay:{.2 + i * .15:.2f}s">{art}</g></g>')
             x += cw + gap
-        if not row:
+        if not vols and t == 0:
             books.append(f'<text x="{W / 2}" y="{yf - ch / 2:.0f}" text-anchor="middle" class="h" font-size="28" '
                          f'fill="{p["muted"]}">nothing pinned yet</text>')
         landed = .2 + (sum(len(r) for r in rows[:t]) + n) * .15 + .6
@@ -1024,15 +1024,18 @@ def bookcase(p, d, rows):
 
 def works_card(theme, d):
     """Chapter ii: Tooko under the golden tree, holding a red book to her chest (scripts/works.jpg), fading into a
-    bookcase of the pinned repositories as bunkobon - one shelf for up to four, two of three for five or six - with
-    white petals drifting down across both.  The books keep their full size, so their print stays legible."""
+    two-shelf bookcase of the pinned repositories as bunkobon - the top shelf takes the odd one, and the case is two
+    or three books wide - with white petals drifting down across both.  The books keep their full size, so their
+    print stays legible."""
     p = PAL[theme]
     vols = d["works"]
-    rows = [vols] if len(vols) <= 4 else [vols[:3], vols[3:]]
+    half = (len(vols) + 1) // 2
+    rows = [vols[:half], vols[half:]]
     case_defs, case, cw, chh = bookcase(p, d, rows)
-    W, M, IW = WORKS_W, WORKS_M, WORKS_IW
+    W, M = WORKS_W, WORKS_M
     H = chh + 2 * M
     cx, cy = W - M - cw, M
+    IW = cx + WORKS_TUCK         # works.jpg (930x1092), pinned to the top left and cut to fill up to the bookcase
     rnd = random.Random(21)
     petals = []
     for k in range(7):   # white blossom drifting from the tree, down and to the right, across the bookcase
@@ -1054,7 +1057,7 @@ def works_card(theme, d):
             + card_frame(p, W, H, "W")
             + f'<defs><style><![CDATA[{css}]]></style>{case_defs}'
             f'<clipPath id="wcard"><rect width="{W}" height="{H}" rx="16"/></clipPath>'
-            f'<linearGradient id="wfade" gradientUnits="userSpaceOnUse" x1="{IW - 150}" y1="0" x2="{IW}" y2="0">{smooth_fade()}</linearGradient>'
+            f'<linearGradient id="wfade" gradientUnits="userSpaceOnUse" x1="{IW - 220}" y1="0" x2="{IW}" y2="0">{smooth_fade()}</linearGradient>'
             f'<mask id="wmask"><rect width="{IW}" height="{H}" fill="url(#wfade)"/></mask>'
             f'<filter id="wtint" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="table" tableValues="{p["toneR"]}"/>'
             f'<feFuncG type="table" tableValues="{p["toneG"]}"/><feFuncB type="table" tableValues="{p["toneB"]}"/></feComponentTransfer></filter>'
@@ -1077,7 +1080,7 @@ def works_card(theme, d):
             f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
             f'<filter id="wshade" x="-20%" y="-10%" width="140%" height="120%"><feGaussianBlur stdDeviation="5"/></filter></defs>'
             + f'<g clip-path="url(#wcard)">'
-            f'<image href="data:image/jpeg;base64,{WORKS_IMG}" width="{IW}" height="{H}" preserveAspectRatio="xMidYMid slice" mask="url(#wmask)" filter="url(#wtint)"/>'
+            f'<image href="data:image/jpeg;base64,{WORKS_IMG}" width="{IW}" height="{H}" preserveAspectRatio="xMinYMin slice" mask="url(#wmask)" filter="url(#wtint)"/>'
             f'<rect x="{cx + 8}" y="{cy + 12}" width="{cw}" height="{chh}" fill="#000" opacity=".35" filter="url(#caseShade)"/>'
             f'<g transform="translate({cx} {cy})">{case}</g>'
             + "".join(petals) + "</g></svg>")

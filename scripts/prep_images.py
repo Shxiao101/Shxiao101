@@ -27,9 +27,9 @@ CROPS = {
     "footer": ("001.jpg", (0, 20, 1200, 960), (970, 760)),
     # head to waist with the raised hand and the pink book; aspect matches the 524x480 slot of the stats panel
     "stats": ("022.jpg", (2300, 100, 4700, 2300), (1048, 960)),
-    # head to hip with the red book held to her chest, clear of the vertical passage on her left and the folio at the
-    # foot; aspect matches the 330x400 slot of the works-in-progress card
-    "works": ("021.jpg", (894, 372, 2632, 2481), (660, 800)),
+    # head to skirt with the red book held to her chest and the braid swinging out, clear of the vertical passage on
+    # her left and the folio at the foot; aspect matches the 620x728 slot of the works-in-progress card
+    "works": ("021.jpg", (819, 298, 3054, 2922), (930, 1092)),
 }
 
 
