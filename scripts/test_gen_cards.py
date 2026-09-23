@@ -16,7 +16,7 @@ from paper import punch
 TODAY = dt.date(2026, 9, 23)
 
 
-def fake_gql(repos, commits):
+def fake_gql(repos, commits, pinned=()):
     """A stand-in for gen_cards.gql answering the three queries collect() makes; repos come back 2 per page."""
     days = [TODAY - dt.timedelta(days=370 - i) for i in range(371)]
     calendar = {"weeks": [{"contributionDays": [{"date": d.isoformat(), "contributionCount": i % 3}
@@ -30,15 +30,17 @@ def fake_gql(repos, commits):
                                               "pageInfo": {"hasNextPage": start + 2 < len(repos), "endCursor": str(start + 2)}}}}
         if query is gen_cards.QUERY:
             return {"prs": {"issueCount": 3}, "issues": {"issueCount": 1}, "user": {"contributionsCollection": {
-                "commitContributionsByRepository": commits, "contributionCalendar": calendar}}}
+                "commitContributionsByRepository": commits, "contributionCalendar": calendar},
+                "pinnedItems": {"nodes": list(pinned)}}}
         if query is gen_cards.YEARS_QUERY:
             return {"user": {"contributionsCollection": {"contributionYears": []}}}
         raise AssertionError(query)
     return gql
 
 
-def repo(name, desc, pushed, langs, stars=0):
+def repo(name, desc, pushed, langs, stars=0, owner="Shxiao101", private=False):
     return {"name": name, "description": desc, "pushedAt": f"{pushed}T00:00:00Z", "stargazerCount": stars,
+            "forkCount": 1, "owner": {"login": owner}, "isPrivate": private,
             "languages": {"edges": [{"size": s, "node": {"name": n, "color": c}} for n, s, c in langs]}}
 
 
@@ -47,7 +49,7 @@ class CardTests(unittest.TestCase):
 
     def render_all(self, d):
         for theme in ("dark", "light"):
-            for fn in (gen_cards.stats_panel, gen_cards.shelf_card, gen_cards.toc_card):
+            for fn in (gen_cards.stats_panel, gen_cards.shelf_card, gen_cards.toc_card, gen_cards.works_card):
                 with self.subTest(card=fn.__name__, theme=theme):
                     svg = fn(theme, d)
                     ET.fromstring(svg)
@@ -68,7 +70,48 @@ class CardTests(unittest.TestCase):
         self.assertEqual(d["commits"], 7)
         self.assertEqual((d["prs"], d["issues"]), (3, 1))
         self.assertEqual([r["name"] for r in d["own"]][:2], ["tool", "x" * 80])
+        # nothing pinned: the most starred stand in, the profile repository left out
+        self.assertFalse(d["works_pinned"])
+        self.assertEqual([v["name"] for v in d["works"]][:1], ["tool"])
+        self.assertNotIn("Shxiao101", [v["name"] for v in d["works"]])
         self.render_all(d)
+
+    def test_pinned(self):
+        """Pinned repositories fill the ledge in pinned order, someone else's included, private ones left out."""
+        pinned = [repo("byrdocs-web", "the <BYR> Docs site " * 6, "2026-09-10", [("Vue", 9, "#41b883")], 40, owner="byrdocs"),
+                  repo("secret", "hidden", "2026-09-10", [], private=True),
+                  repo("MyVeryLongCamelCaseRepositoryNameThatKeepsGoing", None, "2024-01-01", [("Shell", 5, None)]),
+                  None]
+        with mock.patch.object(gen_cards, "gql", fake_gql([], [], pinned)):
+            d = gen_cards.collect()
+        self.assertTrue(d["works_pinned"])
+        self.assertEqual([(v["name"], v["owner"]) for v in d["works"]],
+                         [("byrdocs-web", "byrdocs"), ("MyVeryLongCamelCaseRepositoryNameThatKeepsGoing", "Shxiao101")])
+        self.assertEqual(d["works"][1]["lang"], "")   # Shell alone doesn't dye a cover
+        self.assertEqual(gen_cards.obi_line(d["works"][0]), "loved by 40 readers")
+        self.assertEqual(gen_cards.obi_line(d["works"][1]), "a quiet little story")
+        self.render_all(d)
+
+    def test_wrap_blurb(self):
+        """Blurbs break between words, or anywhere in CJK text, and every line fits."""
+        self.assertEqual(gen_cards.wrap_blurb("  a  quiet   story ", 10.5, 162), ["a quiet story"])
+        text = "北京邮电大学生存指南，从沙河到西土城，从入学到毕业的全方位攻略 with some English words"
+        lines = gen_cards.wrap_blurb(text, 10.5, 162)
+        self.assertGreater(len(lines), 2)
+        self.assertEqual("".join(lines).replace(" ", ""), text.replace(" ", ""))
+        self.assertTrue(all(gen_cards.text_width("jbmono", ln, 10.5) <= 162 for ln in lines))
+
+    def test_title_lines(self):
+        """Titles break after separators or between camelCase words, and always fit."""
+        self.assertEqual(gen_cards.title_lines("notes", 132, 67), (26, ["notes"]))
+        size, lines = gen_cards.title_lines("byrdocs-web-frontend", 132, 67)
+        self.assertEqual("".join(lines), "byrdocs-web-frontend")
+        self.assertTrue(all(ln.endswith("-") for ln in lines[:-1]))
+        for name in ("MyVeryLongCamelCaseRepositoryNameThatKeepsGoing", "x" * 80):
+            size, lines = gen_cards.title_lines(name, 132, 67)
+            self.assertLessEqual(len(lines), 3)
+            self.assertTrue(all(gen_cards.text_width("outfit", ln, size) <= 132 for ln in lines))
+            self.assertLessEqual((len(lines) - 1) * size * gen_cards.LEAD + size * gen_cards.CAP, 67)
 
     def test_empty_profile(self):
         with mock.patch.object(gen_cards, "gql", fake_gql([], [])):
