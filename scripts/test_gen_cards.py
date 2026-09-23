@@ -70,26 +70,28 @@ class CardTests(unittest.TestCase):
         self.assertEqual(d["commits"], 7)
         self.assertEqual((d["prs"], d["issues"]), (3, 1))
         self.assertEqual([r["name"] for r in d["own"]][:2], ["tool", "x" * 80])
-        # nothing pinned: the most starred stand in, the profile repository left out
-        self.assertFalse(d["works_pinned"])
-        self.assertEqual([v["name"] for v in d["works"]][:1], ["tool"])
-        self.assertNotIn("Shxiao101", [v["name"] for v in d["works"]])
+        # nothing pinned: my latest fill the bookcase, the profile repository left out
+        self.assertEqual(d["works_pinned"], 0)
+        self.assertEqual([v["name"] for v in d["works"]], ["tool", "x" * 80, "notes", "empty"])
         self.render_all(d)
 
     def test_pinned(self):
-        """Pinned repositories fill the ledge in pinned order, someone else's included, private ones left out."""
+        """Pinned repositories come first in pinned order, someone else's included, private ones left out; my latest
+        fill the rest of the bookcase without repeating a pinned one, up to eight volumes."""
         pinned = [repo("byrdocs-web", "the <BYR> Docs site " * 6, "2026-09-10", [("Vue", 9, "#41b883")], 40, owner="byrdocs"),
                   repo("secret", "hidden", "2026-09-10", [], private=True),
                   repo("MyVeryLongCamelCaseRepositoryNameThatKeepsGoing", None, "2024-01-01", [("Shell", 5, None)]),
                   None]
-        with mock.patch.object(gen_cards, "gql", fake_gql([], [], pinned)):
+        mine = [pinned[2]] + [repo(f"r{k}", "mine", f"2026-08-{10 + k}", []) for k in range(9)]
+        with mock.patch.object(gen_cards, "gql", fake_gql(mine, [], pinned)):
             d = gen_cards.collect()
-        self.assertTrue(d["works_pinned"])
-        self.assertEqual([(v["name"], v["owner"]) for v in d["works"]],
+        self.assertEqual(d["works_pinned"], 2)
+        self.assertEqual([(v["name"], v["owner"]) for v in d["works"]][:2],
                          [("byrdocs-web", "byrdocs"), ("MyVeryLongCamelCaseRepositoryNameThatKeepsGoing", "Shxiao101")])
-        self.assertEqual(d["works"][1]["lang"], "")   # Shell alone doesn't dye a cover
-        self.assertEqual(gen_cards.obi_line(d["works"][0]), "loved by 40 readers")
-        self.assertEqual(gen_cards.obi_line(d["works"][1]), "a quiet little story")
+        self.assertEqual([v["name"] for v in d["works"]][2:], ["r8", "r7", "r6", "r5", "r4", "r3"])
+        self.assertEqual(d["works"][1]["lang"], "")   # Shell alone doesn't colour a cover
+        self.assertEqual(gen_cards.obi_line(d["works"][0], True), ("40", "readers"))
+        self.assertEqual(gen_cards.obi_line(d["works"][1], False), ("a hidden gem", ""))
         self.render_all(d)
 
     def test_wrap_blurb(self):

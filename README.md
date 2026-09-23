@@ -61,7 +61,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-light.svg">
-  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg" alt="pinned repositories as books on a ledge, each with an obi" width="100%">
+  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg" alt="a two-tier bookcase of bunkobon: pinned repositories, then the latest, each wearing an obi" width="100%">
 </picture>
 
 </div>
