@@ -1,8 +1,83 @@
-"""Long-lived regressions owned by the card generator: calendar streak semantics."""
+"""Long-lived regressions owned by the card generator: calendar streak semantics, and a smoke test that every card
+renders to well-formed svg from canned API responses, so a rendering bug fails CI instead of the daily run."""
 import datetime as dt
 import unittest
+import xml.etree.ElementTree as ET
+from unittest import mock
 
+import gen_cards
 from gen_cards import streaks
+from paper import punch
+
+TODAY = dt.date(2026, 9, 23)
+
+
+def fake_gql(repos, commits):
+    """A stand-in for gen_cards.gql answering the three queries collect() makes; repos come back 2 per page."""
+    days = [TODAY - dt.timedelta(days=370 - i) for i in range(371)]
+    calendar = {"totalContributions": 12, "weeks": [
+        {"contributionDays": [{"date": d.isoformat(), "contributionCount": i % 3, "contributionLevel": "FIRST_QUARTILE"
+                               if i % 3 else "NONE"} for i, d in enumerate(days[w:w + 7], w)]}
+        for w in range(0, len(days), 7)]}
+
+    def gql(query, variables):
+        if query is gen_cards.REPOS_QUERY:
+            start = int(variables["after"] or 0)
+            return {"user": {"repositories": {"totalCount": len(repos), "nodes": repos[start:start + 2],
+                                              "pageInfo": {"hasNextPage": start + 2 < len(repos), "endCursor": str(start + 2)}}}}
+        if query is gen_cards.QUERY:
+            return {"prs": {"issueCount": 3}, "issues": {"issueCount": 1}, "user": {"contributionsCollection": {
+                "commitContributionsByRepository": commits, "contributionCalendar": calendar}}}
+        if query is gen_cards.YEARS_QUERY:
+            return {"user": {"contributionsCollection": {"contributionYears": []}}}
+        raise AssertionError(query)
+    return gql
+
+
+def repo(name, desc, pushed, langs, stars=0):
+    return {"name": name, "description": desc, "pushedAt": f"{pushed}T00:00:00Z", "stargazerCount": stars,
+            "languages": {"edges": [{"size": s, "node": {"name": n, "color": c}} for n, s, c in langs]}}
+
+
+class CardTests(unittest.TestCase):
+    """Every card renders, punched or not, for a full profile and for an empty one."""
+
+    def render_all(self, d):
+        for theme in ("dark", "light"):
+            for fn in (gen_cards.stats_panel, gen_cards.calendar_card, gen_cards.shelf_card, gen_cards.toc_card):
+                with self.subTest(card=fn.__name__, theme=theme):
+                    svg = fn(theme, d)
+                    ET.fromstring(svg)
+                    ET.fromstring(punch(svg, theme == "dark"))
+
+    def test_full_profile(self):
+        repos = [repo("Shxiao101", "profile", "2026-09-20", [("Python", 900, "#3572A5")], 3),
+                 repo("tool", "a <small> & sharp tool", "2026-09-01", [("Rust", 5000, "#dea584"), ("Shell", 50, None)], 5),
+                 repo("notes", None, "2025-03-02", [("Jupyter Notebook", 3000, None)]),
+                 repo("x" * 80, "  spaced \n out  ", "2026-01-01", [("TypeScript", 800, "#3178c6"), ("Vue", 200, "#41b883")]),
+                 repo("empty", None, "2024-05-05", [])]
+        commits = [{"repository": {"isPrivate": False}, "contributions": {"totalCount": 7}},
+                   {"repository": {"isPrivate": True}, "contributions": {"totalCount": 100}}]
+        with mock.patch.object(gen_cards, "gql", fake_gql(repos, commits)):
+            d = gen_cards.collect()
+        self.assertEqual(d["repos"], 5)
+        self.assertEqual(d["stars"], 8)
+        self.assertEqual(d["commits"], 7)
+        self.assertEqual((d["prs"], d["issues"]), (3, 1))
+        self.assertEqual([r["name"] for r in d["own"]][:2], ["tool", "x" * 80])
+        self.render_all(d)
+
+    def test_empty_profile(self):
+        with mock.patch.object(gen_cards, "gql", fake_gql([], [])):
+            d = gen_cards.collect()
+        self.assertEqual((d["repos"], d["commits"], d["langs"], d["own"]), (0, 0, [], []))
+        self.render_all(d)
+
+    def test_snake(self):
+        raw = ('<svg viewBox="-16 -32 880 192" width="880" height="192" xmlns="http://www.w3.org/2000/svg">'
+               '<style>.c{fill:red}</style><rect class="c" x="0" y="0" width="12" height="12"/></svg>')
+        for theme in ("dark", "light"):
+            ET.fromstring(punch(gen_cards.snake_card(theme, raw), theme == "dark"))
 
 
 class StreakTests(unittest.TestCase):
