@@ -328,7 +328,7 @@ RIP = [(155, 0), (170, .036), (187, .07), (182, .125), (185, .164), (158, .246),
 def paper_sheet(x0, y0, x1, y1, depth=.38, seed=101):
     """The last page as a loose sheet, torn out of the book: its top, foot and outer edge are cut - square corners,
     straight to the eye but faintly uneven - and its right edge, where a right-opening book is bound, is ripped all
-    the way down along RIP (scaled `depth` px per sketch px across, to the sheet's height down), frayed a little;
+    the way down along RIP (scaled `depth` px per sketch px across, to the sheet's height down), finely frayed;
     along the rip the paper split in its thickness, leaving a pale strip of core of uneven width.
     Returns (outline, the rip and the inner edge of its core as polylines, the core as a polygon)."""
     rnd = random.Random(seed)
@@ -338,27 +338,23 @@ def paper_sheet(x0, y0, x1, y1, depth=.38, seed=101):
         return [(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-amp, amp) if k else 0),
                  a[1] + (b[1] - a[1]) * k / n + (rnd.uniform(-amp, amp) if k else 0)) for k in range(n)]
 
-    def smooth(v, r=1):
-        return [sum(v[max(0, i - r):i + r + 1]) / len(v[max(0, i - r):i + r + 1]) for i in range(len(v))]
-
-    # walk the sketch's segments a few px at a time, with a faint fray
-    xs, ys = [], []
+    # walk the sketch's segments a few px at a time; the rip frays finely along the way, and now and then a few
+    # fibres pull away in a small nick
+    rip = []
     for (u0, v0), (u1, v1) in zip(RIP, RIP[1:]):
         a, b = (x1 - u0 * depth, y0 + v0 * (y1 - y0)), (x1 - u1 * depth, y0 + v1 * (y1 - y0))
-        n = max(1, round(math.dist(a, b) / 4))
-        for k in range(n):
-            xs.append(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-1, 1) if xs else 0))
-            ys.append(a[1] + (b[1] - a[1]) * k / n)
-    xs.append(x1)
-    ys.append(y1)
-    xs = [xs[0]] + smooth(xs)[1:-1] + [xs[-1]]
-    cores, core = [], 3.0
-    for _ in xs:
-        core = max(1, min(8, core + rnd.uniform(-1.4, 1.4)))
-        cores.append(core)
-    cores = smooth(cores, 3)
-    rip = list(zip(xs, ys))
-    inner = [(x - c - rnd.uniform(0, .8), y) for (x, y), c in zip(rip, cores)]
+        k = 0.0
+        while k < 1:
+            y = a[1] + (b[1] - a[1]) * k
+            fray = (1.5 * math.sin((y - y0) / (y1 - y0) * 23) + rnd.uniform(-2, 2)
+                    + (rnd.uniform(3, 7) if rnd.random() < .08 else 0)) if rip else 0
+            rip.append((a[0] + (b[0] - a[0]) * k - fray, y))
+            k += rnd.uniform(2.5, 6) / max(math.dist(a, b), 1)
+    rip.append((x1, y1))
+    inner, core = [], 3.0
+    for x, y in rip:
+        core = max(1, min(7, core + rnd.uniform(-1.2, 1.2)))
+        inner.append((x - core - rnd.uniform(0, 1.2), y))
     pts = cut((x0, y0), rip[0]) + rip + cut(rip[-1], (x0, y1))[1:] + cut((x0, y1), (x0, y0))
     line = lambda ps: " ".join(f"{x:.1f},{y:.1f}" for x, y in ps)
     outline = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts) + " Z"
