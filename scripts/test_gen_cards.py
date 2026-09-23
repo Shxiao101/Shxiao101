@@ -87,7 +87,7 @@ class CardTests(unittest.TestCase):
         self.render_all(d)
 
     def test_bookcase_shelves(self):
-        """Up to three volumes stand on one shelf; four to six on two, the top one fuller."""
+        """Up to four volumes stand on one shelf; five or six on two.  The card keeps the other cards' width."""
         with mock.patch.object(gen_cards, "gql", fake_gql([], [], [])):
             d = gen_cards.collect()
         vol = gen_cards.volume(repo("v", "a volume", "2026-09-20", [("Rust", 5, "#dea584")], 12))
@@ -98,9 +98,10 @@ class CardTests(unittest.TestCase):
             ET.fromstring(svg)
             heights[n] = svg.split('height="', 1)[1].split('"', 1)[0]
             self.assertEqual(svg.count('class="cv"'), n)
-        self.assertEqual(len({heights[n] for n in range(4)}), 1)
-        self.assertEqual(len({heights[n] for n in range(4, 7)}), 1)
-        self.assertNotEqual(heights[3], heights[4])
+            self.assertIn('viewBox="0 0 1200 ', svg)
+        self.assertEqual(len({heights[n] for n in range(5)}), 1)
+        self.assertEqual(len({heights[n] for n in range(5, 7)}), 1)
+        self.assertNotEqual(heights[4], heights[5])
 
     def test_wrap_blurb(self):
         """Blurbs break between words, or anywhere in CJK text, and every line fits."""
