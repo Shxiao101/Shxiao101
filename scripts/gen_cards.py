@@ -977,10 +977,10 @@ def tone(c, p):
 WORKS_M = 22               # the card's margin round the bookcase
 
 
-def bookcase(p, d, rows):
+def bookcase(p, d, rows, light=""):
     """The bookcase itself, drawn at the origin: rows of bunkobon standing face out, seen square on from in front of
-    its middle (DEPTH), so each shelf shows its walls, and its floor or ceiling, in perspective.
-    Returns (defs, body, width, height)."""
+    its middle (DEPTH), so each shelf shows its walls, and its floor or ceiling, in perspective.  `light` is laid
+    over the inside of each shelf, behind the books.  Returns (defs, body, width, height)."""
     vols = d["works"]
     cw, ch = COVER_W, COVER_H
     cols = max(2, max(len(r) for r in rows))
@@ -1029,7 +1029,7 @@ def bookcase(p, d, rows):
                          f'fill="{p["muted"]}">nothing pinned yet</text>')
         landed = .2 + (sum(len(r) for r in rows[:t]) + n) * .15 + .6
         clips.append(f'<clipPath id="tier{t}"><rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{yf - y0}"/></clipPath>')
-        body.append(f'<g clip-path="url(#tier{t})">{inner}'
+        body.append(f'<g clip-path="url(#tier{t})">{inner}{light}'
                     f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".4" filter="url(#wshade)">{"".join(shadows)}</g></g></g>'
                     + "".join(books)
                     # the shelf's front edge
@@ -1053,12 +1053,23 @@ def works_card(theme, d):
     vols = d["works"]
     half = (len(vols) + 1) // 2
     rows = [vols[:half], vols[half:]]
-    case_defs, case, cw, chh = bookcase(p, d, rows)
+    dark = theme == "dark"
+    # the bookcase is made of the same light as the picture: honey-coloured wood and a pale gold back, toned with it
+    pw = dict(p, wood0=tone("#e2ae62", p), wood1=tone("#b67a38", p), woodLine=tone("#7a4a1c", p),
+              back0=tone("#f9e2a8", p), back1=tone("#eec07a", p))
+    # dappled shade of blossom and a few bright patches, falling inside the shelves behind the books
+    rnd = random.Random(21)
+    dapple = "".join(f'<path d="{BLOSSOM_PETAL}" transform="translate({rnd.uniform(0, 700):.0f} {rnd.uniform(0, 700):.0f}) '
+                     f'rotate({rnd.uniform(0, 360):.0f}) scale({rnd.uniform(5, 9):.1f})"/>' for _ in range(14))
+    spots = "".join(f'<ellipse cx="{rnd.uniform(0, 700):.0f}" cy="{rnd.uniform(0, 700):.0f}" rx="{rnd.uniform(40, 80):.0f}" '
+                    f'ry="{rnd.uniform(25, 45):.0f}"/>' for _ in range(5))
+    light = (f'<g fill="{tone("#8a4a10", p)}" opacity=".16" filter="url(#dapple)">{dapple}</g>'
+             f'<g fill="{tone("#ffe9a6", p)}" opacity=".3" filter="url(#dapple)">{spots}</g>')
+    case_defs, case, cw, chh = bookcase(pw, d, rows, light)
     W, M = WORKS_W, WORKS_M
     H = chh + 2 * M
     cx, cy = W - M - cw, M
     IW = cx + WORKS_TUCK         # works.jpg (930x1092), pinned to the top left and cut to fill up to the bookcase
-    rnd = random.Random(21)
     petals = []
     for k in range(7):   # white blossom drifting from the tree, down and to the right, across the bookcase
         x0, dur = rnd.uniform(-40, W * .55), rnd.uniform(14, 22)
@@ -1074,15 +1085,21 @@ def works_card(theme, d):
            "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}")
     label = esc(f"works in progress: Tooko holding a book beside a bookcase of {len(vols)} pinned repositories: "
                 f"{', '.join(v['name'] for v in vols) or 'none yet'}")
-    wood0, wood1, b0, b1 = p["wood0"], p["wood1"], p["back0"], p["back1"]
+    wood0, wood1, b0, b1 = pw["wood0"], pw["wood1"], pw["back0"], pw["back1"]
     gold = [tone(c, p) for c in WORKS_GOLD]
     glow = tone("#ffe9a6", p)
+    # the tree's light: shafts of sun from the upper left, across the picture and the card behind the bookcase
+    sun_defs, sun = light_rays("sunW", 80, W - 80, H, dark, seed=5, count=5)
+
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">'
             + f'<defs><style><![CDATA[{CSS}{css}]]></style>{case_defs}'
             f'<clipPath id="wcard"><rect width="{W}" height="{H}" rx="16"/></clipPath>'
             f'<linearGradient id="wbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{gold[0]}"/>'
             f'<stop offset=".5" stop-color="{gold[1]}"/><stop offset="1" stop-color="{gold[2]}"/></linearGradient>'
             f'<filter id="wglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>'
+            f'<filter id="dapple" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>'
+            f'<linearGradient id="haze" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{glow}" stop-opacity=".55"/>'
+            f'<stop offset="1" stop-color="{glow}" stop-opacity="0"/></linearGradient>{sun_defs}'
             f'<linearGradient id="wfade" gradientUnits="userSpaceOnUse" x1="{IW - 220}" y1="0" x2="{IW}" y2="0">{smooth_fade()}</linearGradient>'
             f'<mask id="wmask"><rect width="{IW}" height="{H}" fill="url(#wfade)"/></mask>'
             f'<filter id="wtint" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="table" tableValues="{p["toneR"]}"/>'
@@ -1112,8 +1129,9 @@ def works_card(theme, d):
             f'<ellipse cx="{W * .95:.0f}" cy="{H * .55:.0f}" rx="200" ry="260" opacity=".4"/>'
             f'<ellipse cx="{W * .7:.0f}" cy="{H * .95:.0f}" rx="320" ry="120" opacity=".45"/></g>'
             f'<image href="data:image/jpeg;base64,{WORKS_IMG}" width="{IW}" height="{H}" preserveAspectRatio="xMinYMin slice" mask="url(#wmask)" filter="url(#wtint)"/>'
+            + sun +   # behind the bookcase, so the light never dims the books' print
             f'<rect x="{cx + 8}" y="{cy + 12}" width="{cw}" height="{chh}" fill="#000" opacity=".35" filter="url(#caseShade)"/>'
-            f'<g transform="translate({cx} {cy})">{case}</g>'
+            f'<g transform="translate({cx} {cy})">{case}<rect x="-10" width="120" height="{chh}" fill="url(#haze)"/></g>'
             + "".join(petals) + "</g>"
             f'<rect x="0.75" y="0.75" width="{W - 1.5}" height="{H - 1.5}" rx="16" fill="none" stroke="{p["border"]}" stroke-width="1.5"/></svg>')
 
