@@ -182,11 +182,8 @@ def collect():
            if s / total_lang >= .005][:6]
     # my own repositories, latest first; the profile repository itself is where the reader already is
     own = sorted((r for r in repos if r["name"].lower() != LOGIN.lower()), key=lambda r: r["pushedAt"], reverse=True)
-    # chapter ii: the pinned repositories, then my latest, to fill the bookcase
-    pinned = [r for r in u["pinnedItems"]["nodes"] if r and not r["isPrivate"]]
-    key = lambda r: (r["owner"]["login"].lower(), r["name"].lower())
-    seen = {key(r) for r in pinned}
-    works = [volume(r) for r in (pinned + [r for r in own if key(r) not in seen])[:WORKS_MAX]]
+    # chapter ii: the pinned repositories
+    works = [volume(r) for r in u["pinnedItems"]["nodes"] if r and not r["isPrivate"]][:WORKS_MAX]
     cc = u["contributionsCollection"]
     days = [(d["date"], d["contributionCount"]) for w in cc["contributionCalendar"]["weeks"] for d in w["contributionDays"]]
     today = dt.date.fromisoformat(days[-1][0])   # the calendar ends on github's "today"
@@ -209,7 +206,6 @@ def collect():
                  "langs": [e["node"]["name"] for e in r["languages"]["edges"] if e["node"]["name"] not in SKIP_LANGS]}
                 for r in own],
         "works": works,
-        "works_pinned": min(len(pinned), WORKS_MAX),
     }
 
 
@@ -796,10 +792,13 @@ def toc_card(theme, d):
             + "".join(body) + underline + ribbon + "</g>" + flap + "</svg>")
 
 
-WORKS_MAX = 8              # volumes in the works-in-progress bookcase, four to a shelf
-COVER_W, COVER_H = 196, 278    # A6, a bunkobon, as drawn; the bookcase scales them up
-IMPRINT = "shxiao bunko"   # the publisher's name at the foot of every obi
-FRESH_DAYS = 30            # pushed this recently, the obi carries a "new chapter" tag
+WORKS_MAX = 6              # github pins six at most: three to a shelf, on one shelf or two
+COVER_W, COVER_H = 196, 278    # A6, a bunkobon
+FRESH_DAYS = 30            # pushed this recently, a hand-written "new chapter" note is taped to the jacket
+# depth, drawn in oblique projection as seen from up and to the right: the screen offset of going back through
+# the whole bookcase, and through one book.  So the top and right faces show, and inside the case the left wall
+# and the top of each shelf.
+CASE_D, BOOK_D = (22, -16), (8, -6)
 # obi colours, taken in turn as on a bookshop's new-releases shelf: (band, print, the figure that shouts)
 OBIS = [("#f4d31f", "#1d1a14", "#c8281e"), ("#1f1d1b", "#f7f1e3", "#f4d31f"),
         ("#c8281e", "#fff8ea", "#ffe14a"), ("#f8f5ec", "#1d1a14", "#c8281e")]
@@ -825,14 +824,6 @@ def title_lines(name, max_w, max_h, max_lines=3):
         [clip_text("outfit", "".join(lines[max_lines - 1:]), size, max_w)]
 
 
-def obi_line(v, fresh):
-    """The obi's shout, (big, small): the reader count set big as a print run would be, or while there are no
-    readers, a line of copy."""
-    if v["stars"]:
-        return f"{v['stars']:,}", f"reader{'s' if v['stars'] != 1 else ''}"
-    return ("fresh off the press" if fresh else "a hidden gem"), ""
-
-
 WIDE = "[\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]"   # CJK, hangul, full-width forms
 
 
@@ -848,13 +839,12 @@ def wrap_blurb(text, size, max_w):
     return lines + [cur.rstrip()] if cur.strip() else lines
 
 
-def wash(p, v, i, shade, y0, y1):
+def wash(p, v, base, y0, y1):
     """The cover art between y0 and y1: a watercolour wash in the language's colour, laid on a diagonal from the
     lower left to the upper right with a few splatters, and cherry petals drifting down across it.  Seeded by the
     repository's name, so each volume keeps its picture from day to day."""
     cw = COVER_W
     rnd = random.Random(v["name"])
-    base = mix(v["color"] or p["langs"][i % len(p["langs"])], "#000", shade)
     blobs = []
     for k in range(6):
         t = k / 5
@@ -875,138 +865,171 @@ def wash(p, v, i, shade, y0, y1):
     return (f'<g filter="url(#wash)">{"".join(blobs)}</g><g fill="{base}" opacity=".45">{dots}</g>', "".join(petals))
 
 
-def cover(p, i, v, today, shade=0, number=1):
-    """One bunkobon face out, drawn at the origin: an A6 paperback in a paper jacket, the catalogue number,
-    title and author in a band of plain paper across the top, a watercolour below it, and a bold obi shouting
-    the reader count over the description.  A glint of light crosses the jacket now and then.
+def poly(*pts):
+    return "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts) + " Z"
+
+
+def cover(p, i, v, today, shade=0, number=1, band=0):
+    """One bunkobon standing face out, drawn with its front at the origin.  It opens from the right, so the spine
+    is on the right: that face shows, and the top of the page block.  The paper jacket carries the catalogue
+    number, title and author in a band across the top and a watercolour below; the obi (colour OBIS[band])
+    carries the description as its copy and the stars in a round badge.  A glint crosses the jacket now and then.
     `shade` darkens the wash, so two volumes in one language aren't twins; `number` counts the author's volumes,
     for the catalogue number."""
     cw, ch = COVER_W, COVER_H
     cx = cw / 2
-    ink = p["ink"]
+    ink, dim = p["ink"], float(p["coverDim"])
+    base = mix(v["color"] or p["langs"][i % len(p["langs"])], "#000", shade)
+    bg, oink, hot = OBIS[band % len(OBIS)]
     oy = round(ch * .66)         # top of the obi
     # the title band: catalogue number and volume, then the title and the author, centred
     size, lines = title_lines(v["name"], cw - 36, 62)
     lead = size * LEAD
     ty = 42 + size * CAP
     last = ty + (len(lines) - 1) * lead
-    band = last + 34             # the author's line; below it the picture begins
-    art, petals = wash(p, v, i, shade, band - 14, oy)
+    top = last + 34              # the author's line; below it the picture begins
+    art, petals = wash(p, v, base, top - 14, oy)
     # plain paper over the top of the jacket, fading out below the author so the wash bleeds up into it
     fade = (f'<linearGradient id="bf{i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["paper"]}" stop-opacity=".94"/>'
-            f'<stop offset="{(band - 4) / (band + 26):.3f}" stop-color="{p["paper"]}" stop-opacity=".94"/>'
+            f'<stop offset="{(top - 4) / (top + 26):.3f}" stop-color="{p["paper"]}" stop-opacity=".94"/>'
             f'<stop offset="1" stop-color="{p["paper"]}" stop-opacity="0"/></linearGradient>')
     title = "".join(f'<text x="{cx}" y="{ty + j * lead:.1f}" text-anchor="middle" class="t" font-size="{size}" fill="{ink}">{esc(ln)}</text>'
                     for j, ln in enumerate(lines))
     head_row = (f'<text x="16" y="25" class="m" font-size="9.5" fill="{p["inkMuted"]}">{esc(v["owner"][:1].lower())}-1-{number}</text>'
-                f'<text x="{cw - 16}" y="26" text-anchor="end" class="h" font-size="17" fill="{p["inkMuted"]}">vol. {ROMAN[i]}</text>')
+                f'<text x="{cw - 18}" y="26" text-anchor="end" class="h" font-size="17" fill="{p["inkMuted"]}">vol. {ROMAN[i]}</text>')
     author = (f'<rect x="{cx - 14}" y="{last + 10:.1f}" width="28" height=".8" fill="{ink}" opacity=".45"/>'
               f'<text x="{cx}" y="{last + 26:.1f}" text-anchor="middle" class="m" font-size="10.5" letter-spacing="1.5" fill="{p["inkMuted"]}">'
               f'{esc(clip_text("jbmono", v["owner"], 10.5, cw - 40))}</text>')
-    jacket = (f'<rect width="{cw}" height="{ch}" rx="2" fill="{p["paper"]}"/>' + art
-              + f'<rect width="{cw}" height="{band + 26:.1f}" fill="url(#bf{i})"/>'
+    jacket = (f'<rect width="{cw}" height="{ch}" fill="{p["paper"]}"/>' + art
+              + f'<rect width="{cw}" height="{top + 26:.1f}" fill="url(#bf{i})"/>'
               + petals
               + f'<rect width="{cw}" height="{ch}" filter="url(#paperG)" opacity=".07"/>'
-              f'<path d="M7,0 V{ch}" stroke="#000" stroke-opacity=".06"/><path d="M8.2,0 V{ch}" stroke="#fff" stroke-opacity=".18"/>'   # the scored fold by the spine
+              # the jacket's fold round the spine, on the right
+              f'<path d="M{cw - 7},0 V{ch}" stroke="#000" stroke-opacity=".08"/><path d="M{cw - 8.2},0 V{ch}" stroke="#fff" stroke-opacity=".2"/>'
               + head_row + title + author)
-    # the obi: a solid band, the figure set big, the description in bold beneath, language and imprint at the foot
-    bg, oink, hot = OBIS[(i + i // (WORKS_MAX // 2)) % len(OBIS)]   # each shelf starts one colour on
-    fresh = (today - v["pushed"]).days <= FRESH_DAYS
-    big, small = obi_line(v, fresh)
-    if small:
-        shout = (f'<text x="14" y="{oy + 35}" class="t" font-size="30" fill="{hot}">{esc(big)}'
-                 f'<tspan class="m" font-size="11" dx="6" fill="{oink}">{esc(small)}</tspan></text>')
-    else:
-        shout = f'<text x="14" y="{oy + 31}" class="t" font-size="19" fill="{hot}">{esc(clip_text("outfit", big, 19, cw - 28))}</text>'
-    bw, bs = cw - 28, 11.5
-    blurb = wrap_blurb(v["desc"], bs, bw) or ["(no blurb yet)"]
-    if len(blurb) > 2:
-        blurb = [blurb[0], clip_text("jbmono", blurb[1].rstrip(" ,.;:-，。、") + "...", bs, bw)]
-    iw = text_width("jbmono", IMPRINT, 9)
-    lang = clip_text("jbmono", v["lang"], 9, bw - iw - 26)
-    obi = (f'<path d="M0,{oy} H{cw} V{ch - 2} Q{cw},{ch} {cw - 2},{ch} H2 Q0,{ch} 0,{ch - 2} Z" fill="{bg}"/>'
-           f'<path d="M7,{oy} V{ch}" stroke="#000" stroke-opacity=".08"/>'
+    note = ""
+    if (today - v["pushed"]).days <= FRESH_DAYS:   # a note in a shop assistant's hand, taped on: still being written
+        note = (f'<g transform="translate({cw - 46} {oy - 22}) rotate(7)">'
+                f'<rect x="-26" y="-15" width="54" height="34" fill="#000" opacity=".18"/>'
+                f'<rect x="-28" y="-17" width="54" height="34" fill="#fff7cf"/>'
+                f'<rect x="-12" y="-22" width="24" height="9" fill="{p["blossom"]}" opacity=".6" transform="rotate(-5)"/>'
+                f'<text x="-1" y="0" text-anchor="middle" class="h" font-size="18" fill="#c8281e">new</text>'
+                f'<text x="-1" y="12" text-anchor="middle" class="h" font-size="12.5" fill="{ink}">chapter!</text></g>')
+    # the obi: the description as its copy in bold, the stars in a round badge on the right, the language at the foot
+    badge = ""
+    bw = cw - 28
+    if v["stars"]:
+        bw -= 58
+        bx, by, on = cw - 38, oy + 42, "#fff" if luma(hot) < .5 else "#1d1a14"
+        num = fmt(v["stars"])
+        ns = min(21, 42 / text_width("outfit", num, 1))
+        badge = (f'<circle cx="{bx}" cy="{by}" r="27" fill="{hot}"/>'
+                 f'<circle cx="{bx}" cy="{by}" r="23.5" fill="none" stroke="{on}" stroke-opacity=".45" stroke-width=".8"/>'
+                 f'<text x="{bx}" y="{by - 11}" text-anchor="middle" class="m" font-size="6.5" fill="{on}">loved by</text>'
+                 f'<text x="{bx}" y="{by + ns * .36:.1f}" text-anchor="middle" class="t" font-size="{ns:.1f}" fill="{on}">{num}</text>'
+                 f'<text x="{bx}" y="{by + 17}" text-anchor="middle" class="m" font-size="6.5" fill="{on}">'
+                 f'reader{"s" if v["stars"] != 1 else ""}</text>')
+    bs = 12.5
+    copy = wrap_blurb(v["desc"], bs, bw) or ["(no blurb yet)"]
+    if len(copy) > 3:
+        copy = copy[:2] + [clip_text("jbmono", copy[2].rstrip(" ,.;:-，。、") + "...", bs, bw)]
+    obi = (f'<rect y="{oy}" width="{cw}" height="{ch - oy}" fill="{bg}"/>'
+           f'<path d="M{cw - 7},{oy} V{ch}" stroke="#000" stroke-opacity=".1"/>'
            f'<rect y="{oy}" width="{cw}" height="1" fill="#fff" opacity=".45"/>'
-           + shout
-           + "".join(f'<text x="14" y="{oy + 55 + j * 16}" class="m" font-size="{bs}" font-weight="700" fill="{oink}">{esc(ln)}</text>'
-                     for j, ln in enumerate(blurb)) +
-           f'<text x="14" y="{ch - 9}" class="m" font-size="9" fill="{oink}" opacity=".75">{esc(lang)}</text>'
-           f'<g transform="translate({cw - 14 - iw - 10:.1f} {ch - 12})" fill="{oink}"><circle r="5.5" fill="none" stroke="{oink}" stroke-width=".9"/>'
-           f'<path d="{star_path(3)}"/></g>'
-           f'<text x="{cw - 14}" y="{ch - 9}" text-anchor="end" class="m" font-size="9" fill="{oink}">{esc(IMPRINT)}</text>')
-    tag = ""
-    if fresh:   # a label stuck across the obi's top edge, like a "now a film" flash: still being written
-        tag = (f'<g transform="translate({cw - 92} {oy - 10})"><rect width="80" height="19" rx="1.5" fill="#1f6fd1"/>'
-               f'<text x="40" y="13.2" text-anchor="middle" class="m" font-size="10" font-weight="700" fill="#fff">new chapter</text></g>')
+           + "".join(f'<text x="14" y="{oy + 27 + j * 17}" class="m" font-size="{bs}" font-weight="700" fill="{oink}">{esc(ln)}</text>'
+                     for j, ln in enumerate(copy))
+           + badge +
+           f'<text x="14" y="{ch - 9}" class="m" font-size="9" fill="{oink}" opacity=".75">{esc(clip_text("jbmono", v["lang"], 9, cw - 28))}</text>')
     glint = (f'<g transform="translate(-120 0)">'
              f'<animateTransform attributeName="transform" type="translate" values="-120 0;-120 0;300 0;300 0" keyTimes="0;.84;.93;1" '
              f'calcMode="spline" keySplines="0 0 1 1;{EASE};0 0 1 1" dur="15s" begin="{3 + i * 1.6:.1f}s" repeatCount="indefinite"/>'
              f'<rect y="-20" width="70" height="{ch + 40}" transform="skewX(-18)" fill="url(#glint)"/></g>')
-    dim = f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{p["coverDim"]}"/>'
+    # the book's depth: the spine on the right (the jacket above, the obi wrapping round below) and the page block on top
+    dx, dy = BOOK_D
+    spine = mix(mix(base, p["paper"], .55), "#000", .2 + dim)
+    solid = (f'<path d="{poly((cw, 0), (cw + dx, dy), (cw + dx, oy + dy), (cw, oy))}" fill="{spine}"/>'
+             f'<path d="{poly((cw, oy), (cw + dx, oy + dy), (cw + dx, ch + dy), (cw, ch))}" fill="{mix(bg, "#000", .22 + dim)}"/>'
+             f'<path d="{poly((0, 0), (dx, dy), (cw + dx, dy), (cw, 0))}" fill="{mix("#f1e7cf", "#000", .04 + dim)}"/>'
+             f'<path d="M{dx * .35:.1f},{dy * .35:.1f} H{cw + dx * .35:.1f} M{dx * .65:.1f},{dy * .65:.1f} H{cw + dx * .65:.1f}" '
+             f'stroke="#000" stroke-opacity=".1" stroke-width=".6"/>'     # page edges
+             f'<path d="M0,0 H{cw} L{cw + dx},{dy}" fill="none" stroke="{mix(p["paper"], "#000", dim)}" stroke-width="1.2"/>')   # the jacket's edge
     about = f"{v['name']}: {v['desc']}" if v["desc"] else v["name"]
-    return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}" rx="2"/></clipPath>{fade}',
-            f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{obi}{tag}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
-            f'{dim}{glint}</g>')
+    return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}"/></clipPath>{fade}',
+            f'<title>{esc(about)}</title>{solid}<g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
+            f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{note}')
 
 
 def works_card(theme, d):
-    """Chapter ii, a two-tier bookcase rather than a card: up to eight bunkobon face out, four to a shelf, the
-    pinned repositories first and then my latest.  Each shelf's lip carries a label, as in a bookshop."""
+    """Chapter ii, a bookcase rather than a card: the pinned repositories as bunkobon standing face out, three to a
+    shelf - one shelf for up to three, two (the top one fuller) for four to six.  Drawn in oblique projection
+    (CASE_D, BOOK_D), so the case shows its top and right side, and inside, its left wall and each shelf's top."""
     p = PAL[theme]
     vols = d["works"]
-    S = 1.12                     # the covers are drawn at COVER_W x COVER_H and stand at this scale
-    cw, ch = COVER_W * S, COVER_H * S
-    per, gap, pad, side, crown, board, head = WORKS_MAX // 2, 14, 28, 22, 20, 30, 24
-    W = round(per * cw + (per - 1) * gap + 2 * (pad + side))
+    cw, ch = COVER_W, COVER_H
+    half = (len(vols) + 1) // 2
+    rows = [vols[:half], vols[half:]] if len(vols) > 3 else [vols]
+    gap, pad, side, crown, plinth, board, head = 20, 28, 22, 20, 14, 22, 34
+    W = 3 * cw + 2 * gap + 2 * (pad + side)
     tier = head + ch + board
-    H = round(crown + 2 * tier + 10)
+    H = crown + len(rows) * tier + plinth
+    (cdx, cdy), (bdx, bdy) = CASE_D, BOOK_D
+    at = .2                      # how far back the books stand, as a fraction of the case's depth
+    wood0, wood1 = p["wood0"], p["wood1"]
     clips, body = [], []
-    labels = [("#f4d31f", "#1d1a14", f"{IMPRINT} · new releases"), ("#dcebf8", "#1d3a6b", f"{IMPRINT} · backlist")]
-    for t in range(2):
-        row = vols[t * per:(t + 1) * per]
-        top = crown + t * tier
-        base = top + head + ch       # where the covers stand
-        body.append(f'<rect x="{side}" y="{top}" width="{W - 2 * side}" height="26" fill="url(#under)"/>')   # the shelf above's shadow
-        x = W / 2 - (len(row) * cw + (len(row) - 1) * gap) / 2
-        shadows, covers = [], []
+    for t, row in enumerate(rows):
+        y0 = crown + t * tier                     # top of the opening
+        yf = y0 + head + ch                       # front edge of the shelf the books stand on
+        ox, ow = side, W - 2 * side
+        # the opening, back to front: left wall, back panel, the shelf's top, the shade under the shelf above
+        inner = (f'<rect x="{ox}" y="{y0}" width="{ow}" height="{yf - y0}" fill="url(#wall)"/>'
+                 f'<rect x="{ox + cdx}" y="{y0 + cdy}" width="{ow}" height="{yf - y0}" fill="url(#back)"/>'
+                 f'<path d="{poly((ox, yf), (ox + cdx, yf + cdy), (ox + ow + cdx, yf + cdy), (ox + ow, yf))}" fill="url(#floor)"/>'
+                 f'<path d="M{ox + cdx},{y0} V{yf + cdy} L{ox},{yf}" fill="none" stroke="#000" stroke-opacity=".25"/>'
+                 f'<rect x="{ox}" y="{y0}" width="{ow}" height="34" fill="url(#under)"/>')
+        n = len(row)
+        x = W / 2 - (n * cw + (n - 1) * gap) / 2 + cdx * at
+        base = yf + cdy * at                      # where the books' fronts meet the shelf
+        shadows, books = [], []
         for k, v in enumerate(row):
-            i = t * per + k
+            i = sum(len(r) for r in rows[:t]) + k
             twins = sum(1 for u in vols[:i] if u["lang"] == v["lang"])
             number = 1 + sum(1 for u in vols[:i] if u["owner"] == v["owner"])
-            clip, art = cover(p, i, v, d["today"], .14 * twins, number)
+            clip, art = cover(p, i, v, d["today"], .14 * twins, number, i + t)   # each shelf starts one obi colour on
             clips.append(clip)
-            shadows.append(f'<rect x="{x + 6:.1f}" y="{base - ch + 5:.1f}" width="{cw:.1f}" height="{ch - 5:.1f}" rx="2"/>')
-            covers.append(f'<g transform="translate({x:.1f} {base - ch:.1f}) scale({S})">'
-                          f'<g class="cv" style="animation-delay:{.2 + i * .12:.2f}s">{art}</g></g>')
+            # cast back onto the back panel, down and to the right of the light; and a contact shadow on the shelf
+            sx, sy = x + cdx * (1 - at) + 10, base - ch + cdy * (1 - at) + 8
+            shadows.append(f'<rect x="{sx:.1f}" y="{sy:.1f}" width="{cw}" height="{ch - 8}"/>'
+                           f'<path d="{poly((x, base), (x + bdx, base + bdy), (x + cw + bdx + 10, base + bdy), (x + cw + 10, base))}"/>')
+            books.append(f'<g transform="translate({x:.1f} {base - ch:.1f})"><g class="cv" style="animation-delay:{.2 + i * .15:.2f}s">{art}</g></g>')
             x += cw + gap
         if not row:
-            covers.append(f'<text x="{W / 2}" y="{base - ch / 2:.0f}" text-anchor="middle" class="h" font-size="26" '
-                          f'fill="{p["muted"]}">more volumes coming soon</text>')
-        landed = .2 + (t * per + len(row)) * .12 + .6
-        body.append(f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".45" filter="url(#wshade)">{"".join(shadows)}</g></g>'
-                    + "".join(covers))
-        # the shelf board: its front lip hides the foot of the covers; the label is taped to the lip
-        grain = "".join(f'<path d="M{side},{base + yy} C{W * .3:.0f},{base + yy - 1.5} {W * .6:.0f},{base + yy + 2} {W - side},{base + yy}" '
-                        f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".22" stroke-width=".8"/>' for yy in (4, 17))
-        fill, ink, text = labels[t]
-        lw = text_width("outfit", text, 12.5) + 26
-        body.append(f'<rect x="{side}" y="{base - 6:.1f}" width="{W - 2 * side}" height="{board + 6}" fill="url(#wood)"/>{grain}'
-                    f'<rect x="{side}" y="{base - 6:.1f}" width="{W - 2 * side}" height="1.2" fill="#fff" opacity=".22"/>'
-                    f'<rect x="{side}" y="{base + board - 2:.1f}" width="{W - 2 * side}" height="2" fill="{p["woodLine"]}" opacity=".45"/>'
-                    f'<g transform="translate({W / 2:.1f} {base + 1:.1f})"><rect x="{-lw / 2:.1f}" width="{lw:.1f}" height="20" fill="{fill}" stroke="#fff" stroke-width="1.2"/>'
-                    f'<text y="14.5" text-anchor="middle" class="t" font-size="12.5" fill="{ink}">{esc(text)}</text></g>')
-    frame = (f'<rect width="{side}" height="{H}" fill="url(#post)"/><rect x="{W - side}" width="{side}" height="{H}" fill="url(#post)"/>'
-             f'<rect width="{W}" height="{crown}" fill="url(#wood)"/><rect y="{H - 10}" width="{W}" height="10" fill="{p["wood1"]}"/>'
-             f'<rect x="{side - 2}" y="{crown}" width="2" height="{H - crown - 10}" fill="#000" opacity=".25"/>'
-             f'<rect x="{W - side}" y="{crown}" width="2" height="{H - crown - 10}" fill="#000" opacity=".25"/>'
-             f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" rx="3" fill="none" stroke="{p["woodLine"]}" stroke-opacity=".5"/>')
+            books.append(f'<text x="{W / 2}" y="{yf - ch / 2:.0f}" text-anchor="middle" class="h" font-size="28" '
+                         f'fill="{p["muted"]}">nothing pinned yet</text>')
+        landed = .2 + (sum(len(r) for r in rows[:t]) + n) * .15 + .6
+        clips.append(f'<clipPath id="tier{t}"><rect x="{ox}" y="{y0}" width="{ow}" height="{yf - y0}"/></clipPath>')
+        body.append(f'<g clip-path="url(#tier{t})">{inner}'
+                    f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".4" filter="url(#wshade)">{"".join(shadows)}</g></g></g>'
+                    + "".join(books)
+                    # the shelf's front edge
+                    + f'<rect x="{ox}" y="{yf}" width="{ow}" height="{board}" fill="url(#wood)"/>'
+                    f'<rect x="{ox}" y="{yf}" width="{ow}" height="1.2" fill="#fff" opacity=".3"/>'
+                    f'<path d="M{ox},{yf + board * .45:.1f} C{W * .35:.0f},{yf + board * .45 - 1.5:.1f} {W * .6:.0f},{yf + board * .45 + 2:.1f} {ox + ow},{yf + board * .45:.1f}" '
+                    f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".25" stroke-width=".8"/>')
+    # the case: its top and right side going back, then the front of the frame
+    frame = (f'<path d="{poly((0, 0), (cdx, cdy), (W + cdx, cdy), (W, 0))}" fill="{mix(wood0, "#fff", .12)}"/>'
+             f'<path d="{poly((W, 0), (W + cdx, cdy), (W + cdx, H + cdy), (W, H))}" fill="{mix(wood1, "#000", .22)}"/>'
+             f'<rect width="{side}" height="{H}" fill="url(#post)"/><rect x="{W - side}" width="{side}" height="{H}" fill="url(#post)"/>'
+             f'<rect width="{W}" height="{crown}" fill="url(#wood)"/><rect width="{W}" height="1.2" fill="#fff" opacity=".3"/>'
+             f'<rect y="{H - plinth}" width="{W}" height="{plinth}" fill="{mix(wood1, "#000", .15)}"/>'
+             f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" fill="none" stroke="{p["woodLine"]}" stroke-opacity=".5"/>')
     css = (fontface("caveat") + ".h{font-family:'Caveat',cursive;font-weight:600}"
            "@keyframes up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}"
            ".cv{animation:up .8s cubic-bezier(.3,.7,.4,1) both}"
            "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}")
-    label = esc(f"works in progress, a bookcase of {len(vols)} volumes ({d['works_pinned']} pinned): "
+    label = esc(f"works in progress, a bookcase of {len(vols)} pinned repositories: "
                 f"{', '.join(v['name'] for v in vols) or 'none yet'}")
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">'
+    VW, VH = W + cdx, H - cdy
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 {cdy} {VW} {VH}" width="{VW}" height="{VH}" role="img" aria-label="{label}">'
             f'<defs><style><![CDATA[{CSS}{css}]]></style>{"".join(clips)}'
             f'<linearGradient id="board" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".12"/>'
             f'<stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".14"/></linearGradient>'
@@ -1017,13 +1040,14 @@ def works_card(theme, d):
             f'<feColorMatrix type="saturate" values="0"/></filter>'
             f'<linearGradient id="glint" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/>'
             f'<stop offset=".5" stop-color="#fff" stop-opacity="{p["glintO"]}"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>'
-            f'<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["wood0"]}"/><stop offset="1" stop-color="{p["wood1"]}"/></linearGradient>'
-            f'<linearGradient id="post" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["wood1"]}"/><stop offset=".5" stop-color="{p["wood0"]}"/>'
-            f'<stop offset="1" stop-color="{p["wood1"]}"/></linearGradient>'
+            f'<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{wood0}"/><stop offset="1" stop-color="{wood1}"/></linearGradient>'
+            f'<linearGradient id="post" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{wood1}"/><stop offset=".5" stop-color="{wood0}"/>'
+            f'<stop offset="1" stop-color="{wood1}"/></linearGradient>'
+            f'<linearGradient id="floor" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="{mix(wood0, "#fff", .1)}"/><stop offset="1" stop-color="{mix(wood1, "#000", .1)}"/></linearGradient>'
+            f'<linearGradient id="wall" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{mix(p["back1"], "#000", .25)}"/><stop offset=".05" stop-color="{mix(p["back0"], "#000", .1)}"/></linearGradient>'
             f'<linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["back0"]}"/><stop offset="1" stop-color="{p["back1"]}"/></linearGradient>'
-            f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
+            f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
             f'<filter id="wshade" x="-20%" y="-10%" width="140%" height="120%"><feGaussianBlur stdDeviation="5"/></filter></defs>'
-            f'<rect x="{side}" y="{crown}" width="{W - 2 * side}" height="{H - crown - 10}" fill="url(#back)"/>'
             + "".join(body) + frame + "</svg>")
 
 

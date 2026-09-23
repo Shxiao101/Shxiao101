@@ -70,29 +70,37 @@ class CardTests(unittest.TestCase):
         self.assertEqual(d["commits"], 7)
         self.assertEqual((d["prs"], d["issues"]), (3, 1))
         self.assertEqual([r["name"] for r in d["own"]][:2], ["tool", "x" * 80])
-        # nothing pinned: my latest fill the bookcase, the profile repository left out
-        self.assertEqual(d["works_pinned"], 0)
-        self.assertEqual([v["name"] for v in d["works"]], ["tool", "x" * 80, "notes", "empty"])
+        self.assertEqual(d["works"], [])   # nothing pinned: an empty bookcase
         self.render_all(d)
 
     def test_pinned(self):
-        """Pinned repositories come first in pinned order, someone else's included, private ones left out; my latest
-        fill the rest of the bookcase without repeating a pinned one, up to eight volumes."""
+        """Pinned repositories fill the bookcase in pinned order, someone else's included, private ones left out."""
         pinned = [repo("byrdocs-web", "the <BYR> Docs site " * 6, "2026-09-10", [("Vue", 9, "#41b883")], 40, owner="byrdocs"),
                   repo("secret", "hidden", "2026-09-10", [], private=True),
                   repo("MyVeryLongCamelCaseRepositoryNameThatKeepsGoing", None, "2024-01-01", [("Shell", 5, None)]),
                   None]
-        mine = [pinned[2]] + [repo(f"r{k}", "mine", f"2026-08-{10 + k}", []) for k in range(9)]
-        with mock.patch.object(gen_cards, "gql", fake_gql(mine, [], pinned)):
+        with mock.patch.object(gen_cards, "gql", fake_gql([], [], pinned)):
             d = gen_cards.collect()
-        self.assertEqual(d["works_pinned"], 2)
-        self.assertEqual([(v["name"], v["owner"]) for v in d["works"]][:2],
+        self.assertEqual([(v["name"], v["owner"]) for v in d["works"]],
                          [("byrdocs-web", "byrdocs"), ("MyVeryLongCamelCaseRepositoryNameThatKeepsGoing", "Shxiao101")])
-        self.assertEqual([v["name"] for v in d["works"]][2:], ["r8", "r7", "r6", "r5", "r4", "r3"])
         self.assertEqual(d["works"][1]["lang"], "")   # Shell alone doesn't colour a cover
-        self.assertEqual(gen_cards.obi_line(d["works"][0], True), ("40", "readers"))
-        self.assertEqual(gen_cards.obi_line(d["works"][1], False), ("a hidden gem", ""))
         self.render_all(d)
+
+    def test_bookcase_shelves(self):
+        """Up to three volumes stand on one shelf; four to six on two, the top one fuller."""
+        with mock.patch.object(gen_cards, "gql", fake_gql([], [], [])):
+            d = gen_cards.collect()
+        vol = gen_cards.volume(repo("v", "a volume", "2026-09-20", [("Rust", 5, "#dea584")], 12))
+        heights = {}
+        for n in range(7):
+            d["works"] = [dict(vol, name=f"v{k}") for k in range(n)]
+            svg = gen_cards.works_card("dark", d)
+            ET.fromstring(svg)
+            heights[n] = svg.split('height="', 1)[1].split('"', 1)[0]
+            self.assertEqual(svg.count('class="cv"'), n)
+        self.assertEqual(len({heights[n] for n in range(4)}), 1)
+        self.assertEqual(len({heights[n] for n in range(4, 7)}), 1)
+        self.assertNotEqual(heights[3], heights[4])
 
     def test_wrap_blurb(self):
         """Blurbs break between words, or anywhere in CJK text, and every line fits."""
