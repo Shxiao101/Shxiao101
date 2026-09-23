@@ -828,9 +828,17 @@ WIDE = "[\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]"   #
 
 
 def wrap_blurb(text, size, max_w):
-    """Like wrap(), but CJK text (which has no spaces) may break between any two characters."""
+    """Like wrap(), but CJK text (which has no spaces) may break between any two characters, and so may a word too
+    long for a line of its own."""
     lines, cur = [], ""
+    toks = []
     for tok in re.findall(WIDE + r"|[^\s" + WIDE[1:-1] + r"]+|\s+", text):
+        while not tok.isspace() and len(tok) > 1 and text_width("jbmono", tok, size) > max_w:
+            k = max(1, next(k for k in range(len(tok), 0, -1) if text_width("jbmono", tok[:k], size) <= max_w))
+            toks.append(tok[:k])
+            tok = tok[k:]
+        toks.append(tok)
+    for tok in toks:
         if cur and not tok.isspace() and text_width("jbmono", cur + tok, size) > max_w:
             lines.append(cur.rstrip())
             cur = ""
@@ -952,6 +960,20 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
 
 WORKS_W = 1200             # as wide as the other cards
 WORKS_TUCK = 60            # how far the picture runs on under the bookcase, so its fade ends behind it
+# the golden tree's colours down the picture's right edge, top to bottom (sampled from works.jpg): the card is painted
+# with them, so the picture fades into its own light
+WORKS_GOLD = ["#fba02e", "#f79c3d", "#f7bb78"]
+
+
+def tone(c, p):
+    """A colour put through the theme's tone curves (toneR/G/B, as the picture's feComponentTransfer tables), so
+    what's painted around the picture darkens with it on the dark theme."""
+    def curve(v, table):
+        t = [float(x) for x in table.split()]
+        x = v / 255 * (len(t) - 1)
+        i = min(int(x), len(t) - 2)
+        return t[i] + (t[i + 1] - t[i]) * (x - i)
+    return "#" + "".join(f"{round(255 * curve(v, p[k])):02x}" for v, k in zip(rgb(c), ("toneR", "toneG", "toneB")))
 WORKS_M = 22               # the card's margin round the bookcase
 
 
@@ -1053,10 +1075,14 @@ def works_card(theme, d):
     label = esc(f"works in progress: Tooko holding a book beside a bookcase of {len(vols)} pinned repositories: "
                 f"{', '.join(v['name'] for v in vols) or 'none yet'}")
     wood0, wood1, b0, b1 = p["wood0"], p["wood1"], p["back0"], p["back1"]
+    gold = [tone(c, p) for c in WORKS_GOLD]
+    glow = tone("#ffe9a6", p)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">'
-            + card_frame(p, W, H, "W")
-            + f'<defs><style><![CDATA[{css}]]></style>{case_defs}'
+            + f'<defs><style><![CDATA[{CSS}{css}]]></style>{case_defs}'
             f'<clipPath id="wcard"><rect width="{W}" height="{H}" rx="16"/></clipPath>'
+            f'<linearGradient id="wbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{gold[0]}"/>'
+            f'<stop offset=".5" stop-color="{gold[1]}"/><stop offset="1" stop-color="{gold[2]}"/></linearGradient>'
+            f'<filter id="wglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>'
             f'<linearGradient id="wfade" gradientUnits="userSpaceOnUse" x1="{IW - 220}" y1="0" x2="{IW}" y2="0">{smooth_fade()}</linearGradient>'
             f'<mask id="wmask"><rect width="{IW}" height="{H}" fill="url(#wfade)"/></mask>'
             f'<filter id="wtint" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="table" tableValues="{p["toneR"]}"/>'
@@ -1080,10 +1106,16 @@ def works_card(theme, d):
             f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
             f'<filter id="wshade" x="-20%" y="-10%" width="140%" height="120%"><feGaussianBlur stdDeviation="5"/></filter></defs>'
             + f'<g clip-path="url(#wcard)">'
+            # the tree's light, all across the card: its colours, and soft patches of sun through the leaves
+            f'<rect width="{W}" height="{H}" fill="url(#wbg)"/>'
+            f'<g fill="{glow}" filter="url(#wglow)"><ellipse cx="{W * .62:.0f}" cy="{H * .18:.0f}" rx="260" ry="150" opacity=".55"/>'
+            f'<ellipse cx="{W * .95:.0f}" cy="{H * .55:.0f}" rx="200" ry="260" opacity=".4"/>'
+            f'<ellipse cx="{W * .7:.0f}" cy="{H * .95:.0f}" rx="320" ry="120" opacity=".45"/></g>'
             f'<image href="data:image/jpeg;base64,{WORKS_IMG}" width="{IW}" height="{H}" preserveAspectRatio="xMinYMin slice" mask="url(#wmask)" filter="url(#wtint)"/>'
             f'<rect x="{cx + 8}" y="{cy + 12}" width="{cw}" height="{chh}" fill="#000" opacity=".35" filter="url(#caseShade)"/>'
             f'<g transform="translate({cx} {cy})">{case}</g>'
-            + "".join(petals) + "</g></svg>")
+            + "".join(petals) + "</g>"
+            f'<rect x="0.75" y="0.75" width="{W - 1.5}" height="{H - 1.5}" rx="16" fill="none" stroke="{p["border"]}" stroke-width="1.5"/></svg>')
 
 
 def snake_card(theme, raw, d):

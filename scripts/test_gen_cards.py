@@ -110,6 +110,9 @@ class CardTests(unittest.TestCase):
         self.assertGreater(len(lines), 2)
         self.assertEqual("".join(lines).replace(" ", ""), text.replace(" ", ""))
         self.assertTrue(all(gen_cards.text_width("jbmono", ln, 10.5) <= 162 for ln in lines))
+        long = gen_cards.wrap_blurb("Modern protocol-side framework implementation", 16, 108)
+        self.assertEqual("".join(long).replace(" ", ""), "Modernprotocol-sideframeworkimplementation")
+        self.assertTrue(all(gen_cards.text_width("jbmono", ln, 16) <= 108 for ln in long))
 
     def test_title_lines(self):
         """Titles break after separators or between camelCase words, and always fit."""
