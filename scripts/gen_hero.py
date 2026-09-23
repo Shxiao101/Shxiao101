@@ -318,11 +318,12 @@ def leaves(w, h, seed=21):
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
-def paper_sheet(x0, y0, x1, y1, right=265, foot=115, seed=101):
-    """The last page as a loose sheet: square corners, its cut edges straight to the eye but faintly uneven, and its
-    bottom-right corner torn away - a ragged line from `right` px down the right edge to `foot` px in along the foot
-    (by default a small corner, as wide as it is tall), bowing a little into the page.
-    Returns (outline, the tear as a polyline, the unit normal pointing into the page)."""
+def paper_sheet(x0, y0, x1, y1, seed=101):
+    """The last page as a loose sheet, torn out of the book: its top, foot and outer edge are cut - square corners,
+    straight to the eye but faintly uneven - and its right edge, where a right-opening book is bound, is ripped all
+    the way down.  The rip wanders at random, bites deeper here and there and frays; along it the paper split in
+    its thickness, leaving a pale strip of core of uneven width, like the stub of a page torn from the gutter.
+    Returns (outline, the rip and the inner edge of its core as polylines, the core as a polygon)."""
     rnd = random.Random(seed)
 
     def cut(a, b, step=18, amp=.6):   # a trimmed edge from a up to (not including) b
@@ -330,25 +331,22 @@ def paper_sheet(x0, y0, x1, y1, right=265, foot=115, seed=101):
         return [(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-amp, amp) if k else 0),
                  a[1] + (b[1] - a[1]) * k / n + (rnd.uniform(-amp, amp) if k else 0)) for k in range(n)]
 
-    (ax, ay), (bx, by) = (x1, y0 + right), (x1 - foot, y1)
-    length = math.dist((ax, ay), (bx, by))
-    nx, ny = (ay - by) / length, (bx - ax) / length      # unit normal pointing into the page
-    tear, t, walk = [(ax, ay)], 0.0, 0.0
-    while True:
-        t += rnd.uniform(.0035, .008)
-        if t >= 1:
-            break
-        # a rip doesn't run true: it wanders at random, bites deeper here and there, and its fibres fray;
-        # it all eases off towards the ends so the tear meets the cut edges
-        walk = max(-6, min(6, walk + rnd.uniform(-1.6, 1.6)))
-        ease = min(1, t * 7, (1 - t) * 7)
-        off = (5 * 4 * t * (1 - t) + ease * (walk + 2.2 * math.sin(t * 9 + 1)
-               + rnd.uniform(-2, 2) + (rnd.uniform(3, 6) if rnd.random() < .09 else 0)))
-        tear.append((ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off))
-    pts = (cut((x0, y0), (x1, y0)) + cut((x1, y0), (ax, ay)) + tear
-           + cut((bx, by), (x0, y1)) + cut((x0, y1), (x0, y0)))
+    rip, inner, y, walk, core = [], [], y0, 0.0, 3.0
+    while y < y1:
+        t = (y - y0) / (y1 - y0)
+        walk = max(-7, min(7, walk + rnd.uniform(-1.8, 1.8)))
+        into = (6 + walk + 3 * math.sin(t * 5 + 1) + 1.5 * math.sin(t * 23)
+                + rnd.uniform(-2, 2) + (rnd.uniform(3, 7) if rnd.random() < .08 else 0))
+        core = max(1, min(7, core + rnd.uniform(-1.2, 1.2)))
+        rip.append((x1 - into, y))
+        inner.append((x1 - into - core - rnd.uniform(0, 1.2), y))
+        y += rnd.uniform(2.5, 6)
+    rip.append((x1 - 6 + rnd.uniform(-2, 2), y1))
+    inner.append((rip[-1][0] - core, y1))
+    pts = cut((x0, y0), rip[0]) + rip + cut(rip[-1], (x0, y1))[1:] + cut((x0, y1), (x0, y0))
+    line = lambda ps: " ".join(f"{x:.1f},{y:.1f}" for x, y in ps)
     outline = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts) + " Z"
-    return outline, " ".join(f"{x:.1f},{y:.1f}" for x, y in tear + [(bx, by)]), (nx, ny)
+    return outline, line(rip), line(inner), line(rip + inner[::-1])
 
 def footer(theme):
     p = PAL[theme]
@@ -356,11 +354,11 @@ def footer(theme):
     css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
-    TR = FW - 72                  # the text's right edge, clear of the torn corner
+    TR = FW - 72                  # the text's right edge, clear of the rip
     # the sheet sits a few px in from the lower right, leaving room for the shadow it casts
-    outline, tear, (nx, ny) = paper_sheet(1, 1, FW - 7, FH - 8)
-    # the torn edge: the paper's pale core along the rip, and a faint shadow where the fibres lift
-    rim, rimO, shadeO = ("#fff3c4", ".32", ".45") if dark else ("#ffffff", "1", ".14")
+    outline, rip, inner, core = paper_sheet(1, 1, FW - 7, FH - 8)
+    # the rip: the paper's pale core along it, its frayed edge, and a faint shadow where the core lifts
+    rim, coreO, rimO, shadeO = ("#fff3c4", ".16", ".35", ".4") if dark else ("#ffffff", ".85", "1", ".12")
     # the paper itself: its fine tooth lit from the upper left, a faint mottle, and the cut edge
     toothO, mottle, mottleO = (".22", "#000", ".14") if dark else (".16", "#b08a4a", ".07")
     edge, edgeO, dropO = ("#fff3c4", ".14", ".6") if dark else ("#bfae7c", ".7", ".22")
@@ -412,8 +410,9 @@ def footer(theme):
 <line x1="{TR-180}" y1="248" x2="{TR}" y2="248" stroke="{p['border']}" stroke-opacity=".5"/>
 <text x="{TR}" y="278" text-anchor="end" class="over" fill="{p['footMono']}">{FOOT_SUB}</text>
 <path d="{outline}" fill="none" stroke="{edge}" stroke-opacity="{edgeO}" stroke-width="1.6"/>
-<polyline points="{tear}" transform="translate({nx * 3:.2f} {ny * 3:.2f})" fill="none" stroke="#000" stroke-opacity="{shadeO}" stroke-width="1.2" stroke-linejoin="round"/>
-<polyline points="{tear}" fill="none" stroke="{rim}" stroke-opacity="{rimO}" stroke-width="5" stroke-linejoin="round" filter="url(#fibre)"/>
+<polygon points="{core}" fill="{rim}" fill-opacity="{coreO}" filter="url(#fibre)"/>
+<polyline points="{inner}" fill="none" stroke="#000" stroke-opacity="{shadeO}" stroke-width="1" stroke-linejoin="round"/>
+<polyline points="{rip}" fill="none" stroke="{rim}" stroke-opacity="{rimO}" stroke-width="3" stroke-linejoin="round" filter="url(#fibre)"/>
 </g>
 </svg>
 '''
