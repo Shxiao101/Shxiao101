@@ -41,15 +41,9 @@
 </picture>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/calendar-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/calendar-light.svg">
-  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/calendar-dark.svg" alt="contribution calendar" width="100%">
-</picture>
-
-<picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/snake-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/snake-light.svg">
-  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/snake-dark.svg" alt="contribution snake" width="100%">
+  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/snake-dark.svg" alt="contributions: the last 12 months eaten by a snake" width="100%">
 </picture>
 
 </div>

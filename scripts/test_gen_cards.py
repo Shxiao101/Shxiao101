@@ -1,6 +1,10 @@
 """Long-lived regressions owned by the card generator: calendar streak semantics, and a smoke test that every card
 renders to well-formed svg from canned API responses, so a rendering bug fails CI instead of the daily run."""
+import contextlib
 import datetime as dt
+import io
+import os
+import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from unittest import mock
@@ -15,10 +19,9 @@ TODAY = dt.date(2026, 9, 23)
 def fake_gql(repos, commits):
     """A stand-in for gen_cards.gql answering the three queries collect() makes; repos come back 2 per page."""
     days = [TODAY - dt.timedelta(days=370 - i) for i in range(371)]
-    calendar = {"totalContributions": 12, "weeks": [
-        {"contributionDays": [{"date": d.isoformat(), "contributionCount": i % 3, "contributionLevel": "FIRST_QUARTILE"
-                               if i % 3 else "NONE"} for i, d in enumerate(days[w:w + 7], w)]}
-        for w in range(0, len(days), 7)]}
+    calendar = {"weeks": [{"contributionDays": [{"date": d.isoformat(), "contributionCount": i % 3}
+                                                for i, d in enumerate(days[w:w + 7], w)]}
+                          for w in range(0, len(days), 7)]}
 
     def gql(query, variables):
         if query is gen_cards.REPOS_QUERY:
@@ -44,7 +47,7 @@ class CardTests(unittest.TestCase):
 
     def render_all(self, d):
         for theme in ("dark", "light"):
-            for fn in (gen_cards.stats_panel, gen_cards.calendar_card, gen_cards.shelf_card, gen_cards.toc_card):
+            for fn in (gen_cards.stats_panel, gen_cards.shelf_card, gen_cards.toc_card):
                 with self.subTest(card=fn.__name__, theme=theme):
                     svg = fn(theme, d)
                     ET.fromstring(svg)
@@ -74,10 +77,23 @@ class CardTests(unittest.TestCase):
         self.render_all(d)
 
     def test_snake(self):
+        """snk's svgs are framed as the contributions card once, a second run leaves them alone, and a missing
+        one (a local run without snk) is skipped."""
         raw = ('<svg viewBox="-16 -32 880 192" width="880" height="192" xmlns="http://www.w3.org/2000/svg">'
                '<style>.c{fill:red}</style><rect class="c" x="0" y="0" width="12" height="12"/></svg>')
-        for theme in ("dark", "light"):
-            ET.fromstring(punch(gen_cards.snake_card(theme, raw), theme == "dark"))
+        with tempfile.TemporaryDirectory() as out, mock.patch.object(gen_cards, "OUT", out), \
+                contextlib.redirect_stdout(io.StringIO()):
+            path = os.path.join(out, "snake-dark.svg")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(raw)
+            gen_cards.wrap_snake({"active_days": 42})
+            framed = open(path, encoding="utf-8").read()
+            gen_cards.wrap_snake({"active_days": 42})
+            self.assertEqual(open(path, encoding="utf-8").read(), framed)
+            self.assertFalse(os.path.exists(os.path.join(out, "snake-light.svg")))
+        ET.fromstring(framed)
+        self.assertIn(">contributions<", framed)
+        self.assertIn("42 active days · last 12 months", framed)
 
 
 class StreakTests(unittest.TestCase):

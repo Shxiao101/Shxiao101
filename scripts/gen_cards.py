@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Render the profile's stats panel, contribution calendar, bookshelf and preface & contents book page as themed SVGs.
+"""Render the profile's stats panel, bookshelf and preface & contents book page as themed SVGs, and frame the
+contribution snake.
 
-Runs in GitHub Actions (see .github/workflows/cards.yml) and writes dist/{stats,calendar,shelf,toc}-{dark,light}.svg.
-`gen_cards.py snake` instead frames the dist/snake-{dark,light}.svg that Platane/snk produced
-in the same card as the calendar (no token needed).
+Runs in GitHub Actions (see .github/workflows/cards.yml) and writes dist/{stats,shelf,toc}-{dark,light}.svg.
+If Platane/snk has already left dist/snake-{dark,light}.svg there, they are framed as the contributions card
+(a local run without them just skips it).
 Only the standard library is used. Fonts are embedded from scripts/fonts.json (which also carries their advance
 widths, for measuring text), the panel illustration from scripts/stats.jpg (see prep_images.py).
 Repositories, stars, languages, commits, pull requests and issues count public work only, so a local run with a
@@ -51,10 +52,7 @@ query($login: String!, $prs: String!, $issues: String!) {
   user(login: $login) {
     contributionsCollection {
       commitContributionsByRepository(maxRepositories: 100) { repository { isPrivate } contributions { totalCount } }
-      contributionCalendar {
-        totalContributions
-        weeks { contributionDays { date contributionCount contributionLevel } }
-      }
+      contributionCalendar { weeks { contributionDays { date contributionCount } } }
     }
   }
 }
@@ -75,8 +73,6 @@ query($login: String!, $after: String) {
   }
 }
 """
-# github's own 5-step colouring (the same one Platane/snk reads), so the calendar and the snake agree
-LEVELS = {"NONE": 0, "FIRST_QUARTILE": 1, "SECOND_QUARTILE": 2, "THIRD_QUARTILE": 3, "FOURTH_QUARTILE": 4}
 
 
 def gql(query, variables):
@@ -179,9 +175,7 @@ def collect():
     # my own repositories, latest first; the profile repository itself is where the reader already is
     own = sorted((r for r in repos if r["name"].lower() != LOGIN.lower()), key=lambda r: r["pushedAt"], reverse=True)
     cc = u["contributionsCollection"]
-    weeks = [[(d["date"], d["contributionCount"], LEVELS[d["contributionLevel"]]) for d in w["contributionDays"]]
-             for w in cc["contributionCalendar"]["weeks"]]
-    days = [d for w in weeks for d in w]
+    days = [(d["date"], d["contributionCount"]) for w in cc["contributionCalendar"]["weeks"] for d in w["contributionDays"]]
     today = dt.date.fromisoformat(days[-1][0])   # the calendar ends on github's "today"
     return {
         "today": today,
@@ -194,10 +188,8 @@ def collect():
                        if not r["repository"]["isPrivate"]),
         "prs": res["prs"]["issueCount"],
         "issues": res["issues"]["issueCount"],
-        "total": cc["contributionCalendar"]["totalContributions"],
-        "active_days": sum(1 for _, c, _ in days if c > 0),
+        "active_days": sum(1 for _, c in days if c > 0),
         "days_count": len(days),
-        "weeks": weeks,
         "langs": top,
         "own": [{"name": r["name"], "pushed": dt.date.fromisoformat(r["pushedAt"][:10]),
                  "desc": " ".join((r["description"] or "").split()),
@@ -211,7 +203,6 @@ PAL = {
         bg0="#1b180e", bg1="#121210", border="#3a3418",
         title="#fbf6e0", label="#c2b788", value="#fbf6e0", muted="#9a9068",
         accent="#e4cf5a", accent2="#a0a741", track="#2c2814",
-        levels=["#2a221a", "#5c2a16", "#9c3a18", "#e0552a", "#ff9660"],   # maple: ember to vermilion to glow
         langs=["#f2e173", "#d9b84a", "#a0a741", "#6fb8a8", "#f5d49f", "#b38f2e"],
         grad0="#ffffff", grad1="#e4cf5a",
         pbg0="#1b180e", pbg1="#121210", pbg2="#0d1413", frame="#e8d98a", frameO=".20", grainO=".045",
@@ -227,7 +218,6 @@ PAL = {
         bg0="#fffdf3", bg1="#f8f2d8", border="#e6dcae",
         title="#3b340c", label="#6f6434", value="#3b340c", muted="#8f8454",
         accent="#a8841a", accent2="#6f7a1a", track="#eee5bf",
-        levels=["#f1e7d3", "#f8c89a", "#f08a4b", "#d9481c", "#a82a10"],   # maple: pale amber to vermilion to deep red
         langs=["#a8841a", "#d4b64a", "#6f7a1a", "#3f8f7f", "#d49a5a", "#5e4c0c"],
         grad0="#3b340c", grad1="#a8841a",
         pbg0="#faf4d9", pbg1="#fffdf3", pbg2="#f0f2df", frame="#8a7a1a", frameO=".18", grainO=".03",
@@ -244,8 +234,6 @@ PAL = {
 CSS = (fontface("outfit") + fontface("jbmono") +
        ".t{font-family:'Outfit',sans-serif;font-weight:800}"
        ".m{font-family:'JetBrains Mono',monospace;font-weight:500}"
-       "@keyframes pop{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:scale(1)}}"
-       ".c{transform-box:fill-box;transform-origin:center;animation:pop .5s cubic-bezier(.2,.8,.2,1) both}"
        "@keyframes bar{from{transform:scaleX(0)}to{transform:scaleX(1)}}"
        ".b{transform-origin:left;animation:bar 1.2s cubic-bezier(.2,.8,.2,1) .2s both}")
 
@@ -401,36 +389,6 @@ def stats_panel(theme, d):
 <rect x="1" y="1" width="{W-2}" height="{H-2}" rx="27" fill="none" stroke="{p['frame']}" stroke-opacity="{p['frameO']}" stroke-width="1.5"/>
 </g>
 </svg>'''
-
-
-def calendar_card(theme, d):
-    p = PAL[theme]
-    W, H = 1200, 240
-    x0, y0, cell, gap = 48, 78, 16, 4
-    step = cell + gap
-    weeks = d["weeks"]
-
-    cells, labels = [], []
-    last_month, last_label_x = None, -999
-    for wi, week in enumerate(weeks):
-        x = x0 + wi * step
-        first = dt.date.fromisoformat(week[0][0])
-        if first.month != last_month:
-            if x - last_label_x >= 3 * step and wi < len(weeks) - 2:
-                labels.append(f'<text x="{x}" y="{y0-12}" class="m" font-size="11" fill="{p["muted"]}">{first.strftime("%b").lower()}</text>')
-                last_label_x = x
-            last_month = first.month
-        for date, count, lv in week:
-            di = dt.date.fromisoformat(date).weekday()  # mon=0 … sun=6
-            di = (di + 1) % 7  # sun=0 … sat=6, like github
-            y = y0 + di * step
-            cells.append(f'<rect class="c" x="{x}" y="{y}" width="{cell}" height="{cell}" rx="3.5" fill="{p["levels"][lv]}" style="animation-delay:{wi*0.018:.3f}s"><title>{date}: {count}</title></rect>')
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="contribution calendar of {LOGIN}">'
-            + card_frame(p, W, H, "C")
-            + f'<g transform="translate(58 34)" fill="{p["accent"]}">{ICON["star"]}</g>'
-            + f'<text x="76" y="40" class="t" font-size="19" fill="url(#tgC)">contributions</text>'
-            + f'<text x="{W-x0}" y="40" class="m" font-size="12" text-anchor="end" fill="{p["label"]}">{fmt(d["total"])} contributions · {d["active_days"]} active days · last 12 months</text>'
-            + "".join(labels) + "".join(cells) + "</svg>")
 
 
 SHELF_Y = 258          # top of the shelf board, where the books stand
@@ -809,16 +767,17 @@ def toc_card(theme, d):
             + "".join(body) + underline + ribbon + "</g>" + flap + "</svg>")
 
 
-def snake_card(theme, raw):
-    """Nest snk's svg in the calendar's card, scaled so its cells line up with the calendar grid above it.
-    Only fonts and .t/.m go in the style block: snk's own css uses .c/.s/.u and would clash with the calendar's."""
+def snake_card(theme, raw, d):
+    """The contributions card: snk's svg nested in a card like the others, scaled up to 16px cells on a 20px pitch.
+    No total in the header: the stats panel already gives the all-time one, and a 12-month total beside it never
+    quite agrees.  Only fonts and .t/.m go in the style block; snk's own css uses .c/.s/.u."""
     p = PAL[theme]
     W, H = 1200, 300
     vb = re.search(r'viewBox="([^"]+)"', raw).group(1)
     vx, vy, vw, vh = map(float, vb.split())
     inner = raw[raw.index(">", raw.index("<svg")) + 1:raw.rindex("</svg>")]
-    scale = 20 / 16               # snk: 12px cells on a 16px pitch; calendar card: 16px cells on a 20px pitch
-    gx, gy = 48, 78               # top-left of the calendar card's grid
+    scale = 20 / 16               # snk: 12px cells on a 16px pitch
+    gx, gy = 48, 78               # top-left of the grid
     css = (fontface("outfit") + fontface("jbmono") +
            ".t{font-family:'Outfit',sans-serif;font-weight:800}"
            ".m{font-family:'JetBrains Mono',monospace;font-weight:500}")
@@ -829,36 +788,38 @@ def snake_card(theme, raw):
             f'</defs>'
             f'<rect x="0.75" y="0.75" width="{W-1.5}" height="{H-1.5}" rx="16" fill="url(#bgN)" stroke="{p["border"]}" stroke-width="1.5"/>'
             f'<g transform="translate(58 34)" fill="{p["accent"]}">{ICON["star"]}</g>'
-            f'<text x="76" y="40" class="t" font-size="19" fill="url(#tgN)">snake</text>'
-            f'<text x="{W-gx}" y="40" class="m" font-size="12" text-anchor="end" fill="{p["label"]}">eating the last 12 months</text>'
+            f'<text x="76" y="40" class="t" font-size="19" fill="url(#tgN)">contributions</text>'
+            f'<text x="{W-gx}" y="40" class="m" font-size="12" text-anchor="end" fill="{p["label"]}">{d["active_days"]} active days · last 12 months</text>'
             f'<svg x="{gx + vx*scale:.1f}" y="{gy + vy*scale:.1f}" width="{vw*scale:.1f}" height="{vh*scale:.1f}" viewBox="{vb}">{inner}</svg>'
             f'</svg>')
 
 
-def wrap_snake():
+def wrap_snake(d):
     for theme in ("dark", "light"):
         path = os.path.join(OUT, f"snake-{theme}.svg")
+        if not os.path.exists(path):
+            print(f"no {path} (Platane/snk runs first in Actions); contributions card skipped")
+            continue
         raw = open(path, encoding="utf-8").read()
         if 'aria-label="contribution snake of' in raw:
             continue
-        write_svg(path, punch(snake_card(theme, raw), theme == "dark"))
+        write_svg(path, punch(snake_card(theme, raw, d), theme == "dark"))
         print(f"framed {path} ({os.path.getsize(path)//1024} KB)")
 
 
 def main():
-    if sys.argv[1:] == ["snake"]:
-        return wrap_snake()
     os.makedirs(OUT, exist_ok=True)
     d = collect()
+    wrap_snake(d)
     for theme in ("dark", "light"):
-        for name, fn in (("stats", stats_panel), ("calendar", calendar_card), ("shelf", shelf_card), ("toc", toc_card)):
+        for name, fn in (("stats", stats_panel), ("shelf", shelf_card), ("toc", toc_card)):
             path = os.path.join(OUT, f"{name}-{theme}.svg")
             svg = fn(theme, d)
             if name != "toc":   # the contents page is a book page, with a curled corner instead of binder holes
                 svg = punch(svg, theme == "dark")
             write_svg(path, svg)
             print(f"wrote {path} ({os.path.getsize(path)//1024} KB)")
-    print(json.dumps({k: v for k, v in d.items() if k != "weeks"}, ensure_ascii=False, default=str))
+    print(json.dumps(d, ensure_ascii=False, default=str))
 
 
 if __name__ == "__main__":
