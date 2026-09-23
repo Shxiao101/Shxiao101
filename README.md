@@ -54,7 +54,7 @@
   <img src="assets/divider-dark.svg" alt="" width="100%">
 </picture>
 
-### ✦ Chapter II · Works in Progress
+### ✦ Chapter II · Stories Yet Unfolding
 
 <div align="center">
 
