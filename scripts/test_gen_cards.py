@@ -87,7 +87,8 @@ class CardTests(unittest.TestCase):
         self.render_all(d)
 
     def test_bookcase_shelves(self):
-        """Up to three volumes stand on one shelf; four to six on two, the top one fuller."""
+        """The bookcase always has two shelves, the top one taking the odd volume; the card keeps the other cards'
+        width and its height, however many are pinned."""
         with mock.patch.object(gen_cards, "gql", fake_gql([], [], [])):
             d = gen_cards.collect()
         vol = gen_cards.volume(repo("v", "a volume", "2026-09-20", [("Rust", 5, "#dea584")], 12))
@@ -98,9 +99,8 @@ class CardTests(unittest.TestCase):
             ET.fromstring(svg)
             heights[n] = svg.split('height="', 1)[1].split('"', 1)[0]
             self.assertEqual(svg.count('class="cv"'), n)
-        self.assertEqual(len({heights[n] for n in range(4)}), 1)
-        self.assertEqual(len({heights[n] for n in range(4, 7)}), 1)
-        self.assertNotEqual(heights[3], heights[4])
+            self.assertIn('viewBox="0 0 1200 ', svg)
+        self.assertEqual(len(set(heights.values())), 1)
 
     def test_wrap_blurb(self):
         """Blurbs break between words, or anywhere in CJK text, and every line fits."""
@@ -110,6 +110,9 @@ class CardTests(unittest.TestCase):
         self.assertGreater(len(lines), 2)
         self.assertEqual("".join(lines).replace(" ", ""), text.replace(" ", ""))
         self.assertTrue(all(gen_cards.text_width("jbmono", ln, 10.5) <= 162 for ln in lines))
+        long = gen_cards.wrap_blurb("Modern protocol-side framework implementation", 16, 108)
+        self.assertEqual("".join(long).replace(" ", ""), "Modernprotocol-sideframeworkimplementation")
+        self.assertTrue(all(gen_cards.text_width("jbmono", ln, 16) <= 108 for ln in long))
 
     def test_title_lines(self):
         """Titles break after separators or between camelCase words, and always fit."""

@@ -5,7 +5,9 @@ Inputs (not tracked, at the repo root): the "文学少女" illustrations
     012.jpg (4961x3502) - the girl waving from behind the classroom window
     001.jpg (1600x1130) - the girl sitting in fallen maple leaves
     022.jpg (4976x3502) - the girl reaching up to the window (right page only; the book on the left page is dropped)
-Outputs: scripts/hero.jpg, scripts/footer.jpg, scripts/stats.jpg (the last one is embedded by gen_cards.py)
+    021.jpg (4966x3502) - the girl holding a red book under the golden tree
+Outputs: scripts/hero.jpg, scripts/footer.jpg, scripts/stats.jpg, scripts/works.jpg (the last two are embedded by
+gen_cards.py)
 Needs Pillow (pip install Pillow; CI never runs this, so it is not in requirements.txt).
 Run only when the source art changes:
     python scripts/prep_images.py [dir-with-sources]
@@ -25,6 +27,9 @@ CROPS = {
     "footer": ("001.jpg", (0, 20, 1200, 960), (970, 760)),
     # head to waist with the raised hand and the pink book; aspect matches the 524x480 slot of the stats panel
     "stats": ("022.jpg", (2300, 100, 4700, 2300), (1048, 960)),
+    # head to skirt with the red book held to her chest and the braid swinging out, clear of the vertical passage on
+    # her left and the folio at the foot; aspect matches the 620x728 slot of the works-in-progress card
+    "works": ("021.jpg", (819, 298, 3054, 2922), (930, 1092)),
 }
 
 

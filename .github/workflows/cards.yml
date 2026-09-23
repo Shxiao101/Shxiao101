@@ -11,6 +11,7 @@ on:
       - "scripts/gen_cards.py"
       - "scripts/common.py"
       - "scripts/stats.jpg"
+      - "scripts/works.jpg"
       - "scripts/fonts.json"
       - "scripts/maple.py"
       - "scripts/paper.py"

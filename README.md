@@ -61,7 +61,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-light.svg">
-  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg" alt="pinned repositories as bunkobon on a bookcase, each wearing an obi" width="100%">
+  <img src="https://raw.githubusercontent.com/Shxiao101/Shxiao101/output/works-dark.svg" alt="Tooko holding a red book under a golden tree, beside a bookcase of pinned repositories as bunkobon, each wearing an obi" width="100%">
 </picture>
 
 </div>
