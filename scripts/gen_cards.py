@@ -816,7 +816,8 @@ def main():
             path = os.path.join(OUT, f"{name}-{theme}.svg")
             svg = fn(theme, d)
             if name != "toc":   # the contents page is a book page, with a curled corner instead of binder holes
-                svg = punch(svg, theme == "dark")
+                # the shelf's holes go down the right edge, past the vase, so the row of books starts on a clean edge
+                svg = punch(svg, theme == "dark", side="right" if name == "shelf" else "left")
             write_svg(path, svg)
             print(f"wrote {path} ({os.path.getsize(path)//1024} KB)")
     print(json.dumps(d, ensure_ascii=False, default=str))
