@@ -795,10 +795,9 @@ def toc_card(theme, d):
 WORKS_MAX = 6              # github pins six at most: three to a shelf, on one shelf or two
 COVER_W, COVER_H = 196, 278    # A6, a bunkobon
 FRESH_DAYS = 30            # pushed this recently, a hand-written "new chapter" note is taped to the jacket
-# depth, drawn in oblique projection as seen from up and to the right: the screen offset of going back through
-# the whole bookcase, and through one book.  So the top and right faces show, and inside the case the left wall
-# and the top of each shelf.
-CASE_D, BOOK_D = (22, -16), (8, -6)
+# the bookcase is seen square on from in front of its middle: its back panel is the opening shrunk this much toward
+# that eye, so inside each shelf the walls, and the shelf's top or the underside of the one above, show in perspective
+DEPTH = .93
 # obi colours, taken in turn as on a bookshop's new-releases shelf: (band, print, the figure that shouts)
 OBIS = [("#f4d31f", "#1d1a14", "#c8281e"), ("#1f1d1b", "#f7f1e3", "#f4d31f"),
         ("#c8281e", "#fff8ea", "#ffe14a"), ("#f8f5ec", "#1d1a14", "#c8281e")]
@@ -870,8 +869,8 @@ def poly(*pts):
 
 
 def cover(p, i, v, today, shade=0, number=1, band=0):
-    """One bunkobon standing face out, drawn with its front at the origin.  It opens from the right, so the spine
-    is on the right: that face shows, and the top of the page block.  The paper jacket carries the catalogue
+    """One bunkobon standing face out, drawn at the origin.  It opens from the right, so the spine, rounding away
+    into shade, is on the right edge.  The paper jacket carries the catalogue
     number, title and author in a band across the top and a watercolour below; the obi (colour OBIS[band])
     carries the description as its copy and the stars in a round badge.  A glint crosses the jacket now and then.
     `shade` darkens the wash, so two volumes in one language aren't twins; `number` counts the author's volumes,
@@ -944,51 +943,48 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
              f'<animateTransform attributeName="transform" type="translate" values="-120 0;-120 0;300 0;300 0" keyTimes="0;.84;.93;1" '
              f'calcMode="spline" keySplines="0 0 1 1;{EASE};0 0 1 1" dur="15s" begin="{3 + i * 1.6:.1f}s" repeatCount="indefinite"/>'
              f'<rect y="-20" width="70" height="{ch + 40}" transform="skewX(-18)" fill="url(#glint)"/></g>')
-    # the book's depth: the spine on the right (the jacket above, the obi wrapping round below) and the page block on top
-    dx, dy = BOOK_D
-    spine = mix(mix(base, p["paper"], .55), "#000", .2 + dim)
-    solid = (f'<path d="{poly((cw, 0), (cw + dx, dy), (cw + dx, oy + dy), (cw, oy))}" fill="{spine}"/>'
-             f'<path d="{poly((cw, oy), (cw + dx, oy + dy), (cw + dx, ch + dy), (cw, ch))}" fill="{mix(bg, "#000", .22 + dim)}"/>'
-             f'<path d="{poly((0, 0), (dx, dy), (cw + dx, dy), (cw, 0))}" fill="{mix("#f1e7cf", "#000", .04 + dim)}"/>'
-             f'<path d="M{dx * .35:.1f},{dy * .35:.1f} H{cw + dx * .35:.1f} M{dx * .65:.1f},{dy * .65:.1f} H{cw + dx * .65:.1f}" '
-             f'stroke="#000" stroke-opacity=".1" stroke-width=".6"/>'     # page edges
-             f'<path d="M0,0 H{cw} L{cw + dx},{dy}" fill="none" stroke="{mix(p["paper"], "#000", dim)}" stroke-width="1.2"/>')   # the jacket's edge
     about = f"{v['name']}: {v['desc']}" if v["desc"] else v["name"]
     return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}"/></clipPath>{fade}',
-            f'<title>{esc(about)}</title>{solid}<g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
+            f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
+            f'<rect x="{cw - 10}" width="10" height="{ch}" fill="url(#spine)"/>'
             f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{note}')
 
 
 def works_card(theme, d):
     """Chapter ii, a bookcase rather than a card: the pinned repositories as bunkobon standing face out, three to a
-    shelf - one shelf for up to three, two (the top one fuller) for four to six.  Drawn in oblique projection
-    (CASE_D, BOOK_D), so the case shows its top and right side, and inside, its left wall and each shelf's top."""
+    shelf - one shelf for up to three, two (the top one fuller) for four to six.  Seen square on from in front of
+    its middle (DEPTH), so each shelf shows its walls, and its floor or ceiling, in perspective."""
     p = PAL[theme]
     vols = d["works"]
     cw, ch = COVER_W, COVER_H
     half = (len(vols) + 1) // 2
     rows = [vols[:half], vols[half:]] if len(vols) > 3 else [vols]
-    gap, pad, side, crown, plinth, board, head = 20, 28, 22, 20, 14, 22, 34
+    gap, pad, side, crown, plinth, board, head = 20, 34, 22, 22, 14, 22, 34
     W = 3 * cw + 2 * gap + 2 * (pad + side)
     tier = head + ch + board
     H = crown + len(rows) * tier + plinth
-    (cdx, cdy), (bdx, bdy) = CASE_D, BOOK_D
-    at = .2                      # how far back the books stand, as a fraction of the case's depth
-    wood0, wood1 = p["wood0"], p["wood1"]
+    ex, ey = W / 2, H / 2
+
+    def back(x, y, k=DEPTH):     # a point on the front plane, moved back into the case until it shrinks by k
+        return ex + (x - ex) * k, ey + (y - ey) * k
+
+    at = 1 - .3 * (1 - DEPTH)    # the books stand a third of the way back
+    wood0, wood1, b0, b1 = p["wood0"], p["wood1"], p["back0"], p["back1"]
     clips, body = [], []
     for t, row in enumerate(rows):
-        y0 = crown + t * tier                     # top of the opening
-        yf = y0 + head + ch                       # front edge of the shelf the books stand on
-        ox, ow = side, W - 2 * side
-        # the opening, back to front: left wall, back panel, the shelf's top, the shade under the shelf above
-        inner = (f'<rect x="{ox}" y="{y0}" width="{ow}" height="{yf - y0}" fill="url(#wall)"/>'
-                 f'<rect x="{ox + cdx}" y="{y0 + cdy}" width="{ow}" height="{yf - y0}" fill="url(#back)"/>'
-                 f'<path d="{poly((ox, yf), (ox + cdx, yf + cdy), (ox + ow + cdx, yf + cdy), (ox + ow, yf))}" fill="url(#floor)"/>'
-                 f'<path d="M{ox + cdx},{y0} V{yf + cdy} L{ox},{yf}" fill="none" stroke="#000" stroke-opacity=".25"/>'
-                 f'<rect x="{ox}" y="{y0}" width="{ow}" height="34" fill="url(#under)"/>')
+        x0, x1, y0, yf = side, W - side, crown + t * tier, crown + t * tier + head + ch
+        (bx0, by0), (bx1, byf) = back(x0, y0), back(x1, yf)
+        # inside the opening: the back panel, then the ceiling, floor and walls running back to it
+        inner = (f'<rect x="{bx0:.1f}" y="{by0:.1f}" width="{bx1 - bx0:.1f}" height="{byf - by0:.1f}" fill="url(#back)"/>'
+                 f'<rect x="{bx0:.1f}" y="{by0:.1f}" width="{bx1 - bx0:.1f}" height="40" fill="url(#under)"/>'
+                 f'<path d="{poly((x0, y0), (x1, y0), (bx1, by0), (bx0, by0))}" fill="{mix(b1, "#000", .35)}"/>'
+                 f'<path d="{poly((x0, yf), (x1, yf), (bx1, byf), (bx0, byf))}" fill="url(#floor)"/>'
+                 f'<path d="{poly((x0, y0), (bx0, by0), (bx0, byf), (x0, yf))}" fill="{mix(b1, "#000", .2)}"/>'
+                 f'<path d="{poly((x1, y0), (bx1, by0), (bx1, byf), (x1, yf))}" fill="{mix(b0, "#fff", .06)}"/>'
+                 f'<path d="M{x0},{y0} L{bx0:.1f},{by0:.1f} L{bx1:.1f},{by0:.1f} L{x1},{y0} M{x0},{yf} L{bx0:.1f},{byf:.1f} L{bx1:.1f},{byf:.1f} L{x1},{yf} '
+                 f'M{bx0:.1f},{by0:.1f} V{byf:.1f} M{bx1:.1f},{by0:.1f} V{byf:.1f}" fill="none" stroke="#000" stroke-opacity=".18"/>')
         n = len(row)
-        x = W / 2 - (n * cw + (n - 1) * gap) / 2 + cdx * at
-        base = yf + cdy * at                      # where the books' fronts meet the shelf
+        x = W / 2 - (n * cw + (n - 1) * gap) / 2
         shadows, books = [], []
         for k, v in enumerate(row):
             i = sum(len(r) for r in rows[:t]) + k
@@ -996,43 +992,42 @@ def works_card(theme, d):
             number = 1 + sum(1 for u in vols[:i] if u["owner"] == v["owner"])
             clip, art = cover(p, i, v, d["today"], .14 * twins, number, i + t)   # each shelf starts one obi colour on
             clips.append(clip)
-            # cast back onto the back panel, down and to the right of the light; and a contact shadow on the shelf
-            sx, sy = x + cdx * (1 - at) + 10, base - ch + cdy * (1 - at) + 8
-            shadows.append(f'<rect x="{sx:.1f}" y="{sy:.1f}" width="{cw}" height="{ch - 8}"/>'
-                           f'<path d="{poly((x, base), (x + bdx, base + bdy), (x + cw + bdx + 10, base + bdy), (x + cw + 10, base))}"/>')
-            books.append(f'<g transform="translate({x:.1f} {base - ch:.1f})"><g class="cv" style="animation-delay:{.2 + i * .15:.2f}s">{art}</g></g>')
+            bx, by = back(x, yf - ch, at)                      # the book, set back a little from the shelf's edge
+            # its shadow on the back panel, down and to the right of the light, and where it meets the shelf
+            sx, sy = back(x, yf - ch)
+            shadows.append(f'<rect x="{sx + 9:.1f}" y="{sy + 7:.1f}" width="{cw * DEPTH:.1f}" height="{ch * DEPTH - 7:.1f}"/>'
+                           f'<rect x="{bx + 2:.1f}" y="{by + ch * at - 5:.1f}" width="{cw * at + 8:.1f}" height="9" rx="4"/>')
+            books.append(f'<g transform="translate({bx:.1f} {by:.1f}) scale({at:.4f})"><g class="cv" style="animation-delay:{.2 + i * .15:.2f}s">{art}</g></g>')
             x += cw + gap
         if not row:
             books.append(f'<text x="{W / 2}" y="{yf - ch / 2:.0f}" text-anchor="middle" class="h" font-size="28" '
                          f'fill="{p["muted"]}">nothing pinned yet</text>')
         landed = .2 + (sum(len(r) for r in rows[:t]) + n) * .15 + .6
-        clips.append(f'<clipPath id="tier{t}"><rect x="{ox}" y="{y0}" width="{ow}" height="{yf - y0}"/></clipPath>')
+        clips.append(f'<clipPath id="tier{t}"><rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{yf - y0}"/></clipPath>')
         body.append(f'<g clip-path="url(#tier{t})">{inner}'
                     f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".4" filter="url(#wshade)">{"".join(shadows)}</g></g></g>'
                     + "".join(books)
                     # the shelf's front edge
-                    + f'<rect x="{ox}" y="{yf}" width="{ow}" height="{board}" fill="url(#wood)"/>'
-                    f'<rect x="{ox}" y="{yf}" width="{ow}" height="1.2" fill="#fff" opacity=".3"/>'
-                    f'<path d="M{ox},{yf + board * .45:.1f} C{W * .35:.0f},{yf + board * .45 - 1.5:.1f} {W * .6:.0f},{yf + board * .45 + 2:.1f} {ox + ow},{yf + board * .45:.1f}" '
+                    + f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="{board}" fill="url(#wood)"/>'
+                    f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="1.2" fill="#fff" opacity=".3"/>'
+                    f'<path d="M{x0},{yf + board * .45:.1f} C{W * .35:.0f},{yf + board * .45 - 1.5:.1f} {W * .6:.0f},{yf + board * .45 + 2:.1f} {x1},{yf + board * .45:.1f}" '
                     f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".25" stroke-width=".8"/>')
-    # the case: its top and right side going back, then the front of the frame
-    frame = (f'<path d="{poly((0, 0), (cdx, cdy), (W + cdx, cdy), (W, 0))}" fill="{mix(wood0, "#fff", .12)}"/>'
-             f'<path d="{poly((W, 0), (W + cdx, cdy), (W + cdx, H + cdy), (W, H))}" fill="{mix(wood1, "#000", .22)}"/>'
-             f'<rect width="{side}" height="{H}" fill="url(#post)"/><rect x="{W - side}" width="{side}" height="{H}" fill="url(#post)"/>'
+    frame = (f'<rect width="{side}" height="{H}" fill="url(#post)"/><rect x="{W - side}" width="{side}" height="{H}" fill="url(#post)"/>'
              f'<rect width="{W}" height="{crown}" fill="url(#wood)"/><rect width="{W}" height="1.2" fill="#fff" opacity=".3"/>'
              f'<rect y="{H - plinth}" width="{W}" height="{plinth}" fill="{mix(wood1, "#000", .15)}"/>'
-             f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" fill="none" stroke="{p["woodLine"]}" stroke-opacity=".5"/>')
+             f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" rx="2" fill="none" stroke="{p["woodLine"]}" stroke-opacity=".5"/>')
     css = (fontface("caveat") + ".h{font-family:'Caveat',cursive;font-weight:600}"
            "@keyframes up{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}"
            ".cv{animation:up .8s cubic-bezier(.3,.7,.4,1) both}"
            "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}")
     label = esc(f"works in progress, a bookcase of {len(vols)} pinned repositories: "
                 f"{', '.join(v['name'] for v in vols) or 'none yet'}")
-    VW, VH = W + cdx, H - cdy
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 {cdy} {VW} {VH}" width="{VW}" height="{VH}" role="img" aria-label="{label}">'
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">'
             f'<defs><style><![CDATA[{CSS}{css}]]></style>{"".join(clips)}'
             f'<linearGradient id="board" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".12"/>'
             f'<stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".14"/></linearGradient>'
+            f'<linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity="0"/>'
+            f'<stop offset="1" stop-color="#000" stop-opacity=".2"/></linearGradient>'
             # watercolour: ragged, bleeding edges; and the jacket paper's grain
             f'<filter id="wash" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="3" seed="4"/>'
             f'<feDisplacementMap in="SourceGraphic" scale="30" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation="3"/></filter>'
@@ -1044,9 +1039,8 @@ def works_card(theme, d):
             f'<linearGradient id="post" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{wood1}"/><stop offset=".5" stop-color="{wood0}"/>'
             f'<stop offset="1" stop-color="{wood1}"/></linearGradient>'
             f'<linearGradient id="floor" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="{mix(wood0, "#fff", .1)}"/><stop offset="1" stop-color="{mix(wood1, "#000", .1)}"/></linearGradient>'
-            f'<linearGradient id="wall" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{mix(p["back1"], "#000", .25)}"/><stop offset=".05" stop-color="{mix(p["back0"], "#000", .1)}"/></linearGradient>'
-            f'<linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["back0"]}"/><stop offset="1" stop-color="{p["back1"]}"/></linearGradient>'
-            f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
+            f'<linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{b0}"/><stop offset="1" stop-color="{b1}"/></linearGradient>'
+            f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
             f'<filter id="wshade" x="-20%" y="-10%" width="140%" height="120%"><feGaussianBlur stdDeviation="5"/></filter></defs>'
             + "".join(body) + frame + "</svg>")
 
