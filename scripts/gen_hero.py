@@ -5,7 +5,7 @@ Usage:  python scripts/gen_hero.py      (needs fontTools + brotli for text measu
 Fonts come from scripts/fonts.json (Google Fonts subsets), the art from scripts/{hero,footer}.jpg
 (see prep_images.py).  Edit the text block below to change the wording.
 """
-import base64, io, os, random
+import base64, io, math, os, random
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
 from common import EASE, FONTS as fonts, fontface, smooth_fade, star_path as star, write_svg
@@ -318,16 +318,42 @@ def leaves(w, h, seed=21):
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
+def torn_corner(w, h, seed=101):
+    """The last page's bottom-right corner, torn away: a ragged line from the right edge, just below the lowest binder
+    hole, down to the foot 300px in, bowing a little into the page.  Returns (card outline, border without the torn
+    stretch, the tear as a polyline) - the rest of the card keeps its rounded corners."""
+    rnd = random.Random(seed)
+    (ax, ay), (bx, by) = (w, h - 32), (w - 300, h)
+    length = ((bx - ax) ** 2 + (by - ay) ** 2) ** .5
+    nx, ny = (ay - by) / length, (bx - ax) / length      # unit normal pointing into the page
+    pts, t = [(ax, ay)], 0.0
+    while True:
+        t += rnd.uniform(.005, .012)
+        if t >= 1:
+            break
+        # the bow, a slow wander, fine fibrous jitter, and now and then a small nick
+        off = (12 * 4 * t * (1 - t) + 2.5 * math.sin(t * 19 + 1) + 1.5 * math.sin(t * 47)
+               + rnd.uniform(-1.3, 1.3) + (rnd.uniform(2, 3.5) if rnd.random() < .07 else 0))
+        pts.append((ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off))
+    pts.append((bx, by))
+    tear = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    outline = (f"M28,0 H{w - 28} A28,28 0 0 1 {w},28 L{tear} H28 A28,28 0 0 1 0,{h - 28} V28 A28,28 0 0 1 28,0 Z")
+    border = f"M{bx},{h - 1} H28 A27,27 0 0 1 1,{h - 28} V28 A27,27 0 0 1 28,1 H{w - 28} A27,27 0 0 1 {w - 1},28 V{ay}"
+    return outline, border, tear, (nx, ny)
+
 def footer(theme):
     p = PAL[theme]
     css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
+    outline, border, tear, (nx, ny) = torn_corner(FW, FH)
+    # the torn edge: the paper's pale core along the rip, and a faint shadow where the fibres lift
+    rim, rimO, shadeO = ("#fff3c4", ".32", ".45") if theme == "dark" else ("#ffffff", "1", ".14")
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {FW} {FH}" width="{FW}" height="{FH}" role="img" aria-label="{FOOT_LINE}">
 <title>{FOOT_LINE}</title>
 <defs>
 <style><![CDATA[{css}]]></style>
-<clipPath id="fcard"><rect x="0" y="0" width="{FW}" height="{FH}" rx="28" ry="28"/></clipPath>
+<clipPath id="fcard"><path d="{outline}"/></clipPath>
 <linearGradient id="fbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{p['bg1']}"/><stop offset=".5" stop-color="{p['bg0']}"/><stop offset="1" stop-color="{p['bg2']}"/></linearGradient>
 <linearGradient id="ffade" gradientUnits="userSpaceOnUse" x1="{IW-330}" y1="0" x2="{IW}" y2="0">
 {FADE_OUT}
@@ -335,6 +361,7 @@ def footer(theme):
 <mask id="fmask"><rect x="0" y="0" width="{IW}" height="{FH}" fill="url(#ffade)"/></mask>
 <filter id="blur70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
 <filter id="leafBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter>
+<filter id="fibre" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation=".7"/></filter>
 <filter id="ftone" color-interpolation-filters="sRGB"><feComponentTransfer>
   <feFuncR type="table" tableValues="{p['footToneR']}"/><feFuncG type="table" tableValues="{p['footToneG']}"/><feFuncB type="table" tableValues="{p['footToneB']}"/>
 </feComponentTransfer></filter>
@@ -354,7 +381,9 @@ def footer(theme):
 <text x="{FW-72}" y="196" text-anchor="end" class="foot-en" fill="{p['footText']}">{FOOT_LINE}</text>
 <line x1="{FW-252}" y1="248" x2="{FW-72}" y2="248" stroke="{p['border']}" stroke-opacity=".5"/>
 <text x="{FW-72}" y="278" text-anchor="end" class="over" fill="{p['footMono']}">{FOOT_SUB}</text>
-<rect x="1" y="1" width="{FW-2}" height="{FH-2}" rx="27" fill="none" stroke="{p['border']}" stroke-opacity="{p['borderO']}" stroke-width="1.5"/>
+<path d="{border}" fill="none" stroke="{p['border']}" stroke-opacity="{p['borderO']}" stroke-width="1.5"/>
+<polyline points="{tear}" transform="translate({nx * 3:.2f} {ny * 3:.2f})" fill="none" stroke="#000" stroke-opacity="{shadeO}" stroke-width="1.2" stroke-linejoin="round"/>
+<polyline points="{tear}" fill="none" stroke="{rim}" stroke-opacity="{rimO}" stroke-width="5" stroke-linejoin="round" filter="url(#fibre)"/>
 </g>
 </svg>
 '''
