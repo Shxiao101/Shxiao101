@@ -318,15 +318,22 @@ def leaves(w, h, seed=21):
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
-def torn_corner(w, h, right=265, foot=115, seed=101):
-    """The last page's bottom-right corner, torn away: a ragged line from `right` px down the right edge to `foot` px
-    in along the foot (by default a small corner, as wide as it is tall), bowing a little into the page.  Returns (card outline, border without the torn stretch, the
-    tear as a polyline, the normal pointing into the page) - the other corners stay rounded."""
+def paper_sheet(x0, y0, x1, y1, right=265, foot=115, seed=101):
+    """The last page as a loose sheet: square corners, its cut edges straight to the eye but faintly uneven, and its
+    bottom-right corner torn away - a ragged line from `right` px down the right edge to `foot` px in along the foot
+    (by default a small corner, as wide as it is tall), bowing a little into the page.
+    Returns (outline, the tear as a polyline, the unit normal pointing into the page)."""
     rnd = random.Random(seed)
-    (ax, ay), (bx, by) = (w, right), (w - foot, h)
-    length = ((bx - ax) ** 2 + (by - ay) ** 2) ** .5
+
+    def cut(a, b, step=18, amp=.6):   # a trimmed edge from a up to (not including) b
+        n = max(1, round(math.dist(a, b) / step))
+        return [(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-amp, amp) if k else 0),
+                 a[1] + (b[1] - a[1]) * k / n + (rnd.uniform(-amp, amp) if k else 0)) for k in range(n)]
+
+    (ax, ay), (bx, by) = (x1, y0 + right), (x1 - foot, y1)
+    length = math.dist((ax, ay), (bx, by))
     nx, ny = (ay - by) / length, (bx - ax) / length      # unit normal pointing into the page
-    pts, t = [(ax, ay)], 0.0
+    tear, t = [(ax, ay)], 0.0
     while True:
         t += rnd.uniform(.0035, .008)
         if t >= 1:
@@ -334,22 +341,26 @@ def torn_corner(w, h, right=265, foot=115, seed=101):
         # the bow, a slow wander, fine fibrous jitter, and now and then a small nick
         off = (5 * 4 * t * (1 - t) + 1.4 * math.sin(t * 13 + 1) + .8 * math.sin(t * 37)
                + rnd.uniform(-1.3, 1.3) + (rnd.uniform(2, 3.5) if rnd.random() < .07 else 0))
-        pts.append((ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off))
-    pts.append((bx, by))
-    tear = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-    outline = (f"M28,0 H{w - 28} A28,28 0 0 1 {w},28 L{tear} H28 A28,28 0 0 1 0,{h - 28} V28 A28,28 0 0 1 28,0 Z")
-    border = f"M{bx},{h - 1} H28 A27,27 0 0 1 1,{h - 28} V28 A27,27 0 0 1 28,1 H{w - 28} A27,27 0 0 1 {w - 1},28 V{ay}"
-    return outline, border, tear, (nx, ny)
+        tear.append((ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off))
+    pts = (cut((x0, y0), (x1, y0)) + cut((x1, y0), (ax, ay)) + tear
+           + cut((bx, by), (x0, y1)) + cut((x0, y1), (x0, y0)))
+    outline = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts) + " Z"
+    return outline, " ".join(f"{x:.1f},{y:.1f}" for x, y in tear + [(bx, by)]), (nx, ny)
 
 def footer(theme):
     p = PAL[theme]
+    dark = theme == "dark"
     css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
     TR = FW - 72                  # the text's right edge, clear of the torn corner
-    outline, border, tear, (nx, ny) = torn_corner(FW, FH)
+    # the sheet sits a few px in from the lower right, leaving room for the shadow it casts
+    outline, tear, (nx, ny) = paper_sheet(1, 1, FW - 7, FH - 8)
     # the torn edge: the paper's pale core along the rip, and a faint shadow where the fibres lift
-    rim, rimO, shadeO = ("#fff3c4", ".32", ".45") if theme == "dark" else ("#ffffff", "1", ".14")
+    rim, rimO, shadeO = ("#fff3c4", ".32", ".45") if dark else ("#ffffff", "1", ".14")
+    # the paper itself: its fine tooth lit from the upper left, a faint mottle, and the cut edge
+    toothO, mottle, mottleO = (".22", "#000", ".14") if dark else (".16", "#b08a4a", ".07")
+    edge, edgeO, dropO = ("#fff3c4", ".14", ".6") if dark else ("#bfae7c", ".7", ".22")
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {FW} {FH}" width="{FW}" height="{FH}" role="img" aria-label="{FOOT_LINE}">
 <title>{FOOT_LINE}</title>
 <defs>
@@ -363,12 +374,25 @@ def footer(theme):
 <filter id="blur70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
 <filter id="leafBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter>
 <filter id="fibre" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation=".7"/></filter>
+<filter id="drop" x="-5%" y="-10%" width="110%" height="130%"><feGaussianBlur stdDeviation="3.5"/></filter>
+<filter id="tooth" x="0" y="0" width="100%" height="100%">
+  <feTurbulence type="fractalNoise" baseFrequency=".5" numOctaves="2" seed="7"/>
+  <feDiffuseLighting surfaceScale="1.1" lighting-color="#fff" result="lit"><feDistantLight azimuth="225" elevation="50"/></feDiffuseLighting>
+  <feColorMatrix in="lit" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -3 0 0 0 2.3" result="shade"/>
+  <feColorMatrix in="lit" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  3 0 0 0 -2.3" result="light"/>
+  <feMerge><feMergeNode in="shade"/><feMergeNode in="light"/></feMerge>
+</filter>
+<filter id="mottle" x="0" y="0" width="100%" height="100%">
+  <feTurbulence type="fractalNoise" baseFrequency=".008" numOctaves="2" seed="11"/>
+  <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  2 0 0 0 -.9"/>
+</filter>
 <filter id="ftone" color-interpolation-filters="sRGB"><feComponentTransfer>
   <feFuncR type="table" tableValues="{p['footToneR']}"/><feFuncG type="table" tableValues="{p['footToneG']}"/><feFuncB type="table" tableValues="{p['footToneB']}"/>
 </feComponentTransfer></filter>
 {leaf_def()}
 {GRAIN}
 </defs>
+<path d="{outline}" transform="translate(3 5)" fill="#000" opacity="{dropO}" filter="url(#drop)"/>
 <g clip-path="url(#fcard)">
 <rect width="{FW}" height="{FH}" fill="url(#fbg)"/>
 <g filter="url(#blur70)">
@@ -377,12 +401,14 @@ def footer(theme):
 <ellipse cx="1110" cy="390" rx="300" ry="140" fill="{p['blob3']}" opacity="{p['blob3o']}"><animate attributeName="cy" values="390;350;390" dur="19s" repeatCount="indefinite"/></ellipse>
 </g>
 <image href="data:image/jpeg;base64,{foot_b64}" x="0" y="0" width="{IW}" height="{FH}" preserveAspectRatio="xMidYMid slice" mask="url(#fmask)" filter="url(#ftone)"/>
+<rect width="{FW}" height="{FH}" fill="{mottle}" opacity="{mottleO}" filter="url(#mottle)"/>
+<rect width="{FW}" height="{FH}" opacity="{toothO}" filter="url(#tooth)"/>
 {leaves(FW, FH)}
 <rect width="{FW}" height="{FH}" filter="url(#grain)" opacity="{p['grainO']}"/>
 <text x="{TR}" y="196" text-anchor="end" class="foot-en" fill="{p['footText']}">{FOOT_LINE}</text>
 <line x1="{TR-180}" y1="248" x2="{TR}" y2="248" stroke="{p['border']}" stroke-opacity=".5"/>
 <text x="{TR}" y="278" text-anchor="end" class="over" fill="{p['footMono']}">{FOOT_SUB}</text>
-<path d="{border}" fill="none" stroke="{p['border']}" stroke-opacity="{p['borderO']}" stroke-width="1.5"/>
+<path d="{outline}" fill="none" stroke="{edge}" stroke-opacity="{edgeO}" stroke-width="1.6"/>
 <polyline points="{tear}" transform="translate({nx * 3:.2f} {ny * 3:.2f})" fill="none" stroke="#000" stroke-opacity="{shadeO}" stroke-width="1.2" stroke-linejoin="round"/>
 <polyline points="{tear}" fill="none" stroke="{rim}" stroke-opacity="{rimO}" stroke-width="5" stroke-linejoin="round" filter="url(#fibre)"/>
 </g>
