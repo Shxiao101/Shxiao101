@@ -6,7 +6,8 @@ Inputs (not tracked, at the repo root): the "文学少女" illustrations
     001.jpg (1600x1130) - the girl sitting in fallen maple leaves
     022.jpg (4976x3502) - the girl reaching up to the window (right page only; the book on the left page is dropped)
 Outputs: scripts/hero.jpg, scripts/footer.jpg, scripts/stats.jpg (the last one is embedded by gen_cards.py)
-Needs Pillow.  Run only when the source art changes:
+Needs Pillow (pip install Pillow; CI never runs this, so it is not in requirements.txt).
+Run only when the source art changes:
     python scripts/prep_images.py [dir-with-sources]
 """
 import os

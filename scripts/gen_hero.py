@@ -5,9 +5,10 @@ Usage:  python scripts/gen_hero.py      (needs fontTools + brotli for text measu
 Fonts come from scripts/fonts.json (Google Fonts subsets), the art from scripts/{hero,footer}.jpg
 (see prep_images.py).  Edit the text block below to change the wording.
 """
-import json, base64, io, os, random
+import base64, io, os, random
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
+from common import EASE, FONTS as fonts, fontface, smooth_fade, star_path as star, write_svg
 from maple import LEAF_COLORS, leaf_def
 from paper import punch
 from sunlight import halo
@@ -23,8 +24,6 @@ FOOT_SUB = "Shxiao  ·  Amano Tooko"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(HERE), "assets")
-os.makedirs(OUT, exist_ok=True)
-fonts = json.load(open(os.path.join(HERE, "fonts.json"), encoding="utf-8"))
 hero_b64 = base64.b64encode(open(os.path.join(HERE, "hero.jpg"), "rb").read()).decode()
 foot_b64 = base64.b64encode(open(os.path.join(HERE, "footer.jpg"), "rb").read()).decode()
 
@@ -42,12 +41,6 @@ def width(key, text, size, letter_spacing=0.0):
         total += hmtx[g][0] / upem * size if g is not None else size * 0.6
         total += letter_spacing
     return total
-
-def fontface(key):
-    f = fonts[key]
-    return ("@font-face{font-family:'%s';font-style:%s;font-weight:%s;"
-            "src:url(data:font/woff2;base64,%s) format('woff2');}\n"
-            % (f["family"], f["style"], f["weight"], f["b64"]))
 
 # Palette pulled from the illustration: sun-bleached cream, window-light gold, olive frames.
 PAL = {
@@ -76,19 +69,6 @@ PAL = {
    footText="#3b340c", footMono="#857a45",
    footGlow="#fbd09a", footGlowO=".45", footToneR="0 1", footToneG="0 1", footToneB="0 1"),
 }
-
-def star(s):
-    k = s * 0.22
-    return f"M0,{-s:.1f} L{k:.1f},{-k:.1f} L{s:.1f},0 L{k:.1f},{k:.1f} L0,{s:.1f} L{-k:.1f},{k:.1f} L{-s:.1f},0 L{-k:.1f},{-k:.1f} Z"
-
-def smooth_fade(n=10):
-    """Smoothstep opacity ramp 1 -> 0.  A linear ramp stops dead where the picture ends and the eye reads
-    that kink as a hard edge on the dark theme; smoothstep eases out to a flat tail."""
-    stops = []
-    for i in range(n + 1):
-        t = i / n
-        stops.append(f'<stop offset="{t:.2f}" stop-color="#fff" stop-opacity="{1 - (3*t*t - 2*t*t*t):.3f}"/>')
-    return "".join(stops)
 
 FADE_OUT = smooth_fade()
 
@@ -187,6 +167,8 @@ def handwriting(text, x, baseline, size, color, start):
     k = size / f["head"].unitsPerEm
     out, pen_x = [], x
     for ch in text:
+        if ord(ch) not in cmap:
+            raise SystemExit(f"{ch!r} in TAGLINE is not in the Caveat subset in fonts.json")
         name = cmap[ord(ch)]
         pen = SVGPathPen(glyphs); glyphs[name].draw(pen); d = pen.getCommands()
         if d:
@@ -302,7 +284,7 @@ def divider(theme):
 </svg>
 '''
 
-EASE = ".45 0 .55 1;.45 0 .55 1"
+SWING = f"{EASE};{EASE}"          # keySplines for a there-and-back animation (values a;b;a)
 
 def leaves(w, h, seed=21):
     """Maple leaves drifting down: each one falls, sways side to side, rocks with the sway and flips over.
@@ -325,14 +307,14 @@ def leaves(w, h, seed=21):
         tilt = rnd.uniform(25, 50); spin = rnd.uniform(0, 360)
         fbeg = -rnd.uniform(0, fall); sbeg = -rnd.uniform(0, sdur)
         c = rnd.choice(LEAF_COLORS)
-        swing = f'keyTimes="0;.5;1" calcMode="spline" keySplines="{EASE}" dur="{sdur:.1f}s" begin="{sbeg:.1f}s" repeatCount="indefinite"'
+        swing = f'keyTimes="0;.5;1" calcMode="spline" keySplines="{SWING}" dur="{sdur:.1f}s" begin="{sbeg:.1f}s" repeatCount="indefinite"'
         out.append(
             f'<g transform="translate({x:.0f} 0)" opacity="{o:.2f}"{blur}>'
             f'<g><animateTransform attributeName="transform" type="translate" values="0 {-14*s:.0f};0 {h+14*s:.0f}" dur="{fall:.1f}s" begin="{fbeg:.1f}s" repeatCount="indefinite"/>'
             f'<g><animateTransform attributeName="transform" type="translate" values="{-sway:.0f} 0;{sway:.0f} 0;{-sway:.0f} 0" {swing}/>'
             f'<g><animateTransform attributeName="transform" type="rotate" values="{spin-tilt:.0f};{spin+tilt:.0f};{spin-tilt:.0f}" {swing}/>'
             f'<g transform="scale({s:.2f})"><use href="#leaf" fill="{c}">'
-            f'<animateTransform attributeName="transform" type="scale" values="1 1;.25 1;1 1" keyTimes="0;.5;1" calcMode="spline" keySplines="{EASE}" dur="{flip:.1f}s" begin="{fbeg:.1f}s" repeatCount="indefinite"/>'
+            f'<animateTransform attributeName="transform" type="scale" values="1 1;.25 1;1 1" keyTimes="0;.5;1" calcMode="spline" keySplines="{SWING}" dur="{flip:.1f}s" begin="{fbeg:.1f}s" repeatCount="indefinite"/>'
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
@@ -378,11 +360,16 @@ def footer(theme):
 '''
 
 
-for theme in ("dark", "light"):
-    for name, fn in (("hero", hero), ("divider", divider), ("footer", footer)):
-        path = os.path.join(OUT, f"{name}-{theme}.svg")
-        # hero and footer art sits on the left, so their binder holes go down the right edge
-        svg = fn(theme) if name == "divider" else punch(fn(theme), theme == "dark", side="right")
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(svg)
-        print(f"{path}: {os.path.getsize(path)/1024:.0f} KB")
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    for theme in ("dark", "light"):
+        for name, fn in (("hero", hero), ("divider", divider), ("footer", footer)):
+            path = os.path.join(OUT, f"{name}-{theme}.svg")
+            # hero and footer art sits on the left, so their binder holes go down the right edge
+            svg = fn(theme) if name == "divider" else punch(fn(theme), theme == "dark", side="right")
+            write_svg(path, svg)
+            print(f"{path}: {os.path.getsize(path)/1024:.0f} KB")
+
+
+if __name__ == "__main__":
+    main()

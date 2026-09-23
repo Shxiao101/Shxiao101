@@ -6,7 +6,9 @@ Runs in GitHub Actions (see .github/workflows/cards.yml) and writes dist/{stats,
 in the same card as the calendar (no token needed).
 Only the standard library is used. Fonts are embedded from scripts/fonts.json (which also carries their advance
 widths, for measuring text), the panel illustration from scripts/stats.jpg (see prep_images.py).
-Only public repositories are counted, so a local run with a personal token matches the Actions run.
+Repositories, stars, languages, commits, pull requests and issues count public work only, so a local run with a
+personal token matches the Actions run.  The calendar and streaks are github's own contribution calendar, which
+includes private contributions only as far as the token's viewer may see them (or the profile shares them).
 """
 import base64
 import datetime as dt
@@ -19,6 +21,7 @@ import sys
 import unicodedata
 import urllib.request
 
+from common import EASE, FONTS, fontface, smooth_fade, star_path, write_svg
 from maple import LEAF_COLORS, STALK_END, leaf_def
 from paper import punch
 from sunlight import light_rays
@@ -38,29 +41,35 @@ PREFACE = [                      # (icon, text): icons are "cap", "books" or "bl
 PREFACE_NAMES = ["BYR Docs", "Amano Tooko"]   # inked in the accent colour
 # --------------------------------------------------------------------------------------------------
 
-FONTS = json.load(open(os.path.join(HERE, "fonts.json"), encoding="utf-8"))
 STATS_IMG = base64.b64encode(open(os.path.join(HERE, "stats.jpg"), "rb").read()).decode()
 
+# pull requests and issues through search, which can be limited to public repositories; user.pullRequests can't
 QUERY = """
-query($login: String!) {
+query($login: String!, $prs: String!, $issues: String!) {
+  prs: search(query: $prs, type: ISSUE, first: 1) { issueCount }
+  issues: search(query: $issues, type: ISSUE, first: 1) { issueCount }
   user(login: $login) {
-    pullRequests { totalCount }
-    issues { totalCount }
-    repositories(first: 100, ownerAffiliations: OWNER, isFork: false, privacy: PUBLIC, orderBy: {field: STARGAZERS, direction: DESC}) {
+    contributionsCollection {
+      commitContributionsByRepository(maxRepositories: 100) { repository { isPrivate } contributions { totalCount } }
+      contributionCalendar {
+        totalContributions
+        weeks { contributionDays { date contributionCount contributionLevel } }
+      }
+    }
+  }
+}
+"""
+REPOS_QUERY = """
+query($login: String!, $after: String) {
+  user(login: $login) {
+    repositories(first: 100, after: $after, ownerAffiliations: OWNER, isFork: false, privacy: PUBLIC, orderBy: {field: STARGAZERS, direction: DESC}) {
       totalCount
+      pageInfo { hasNextPage endCursor }
       nodes {
         name description pushedAt stargazerCount
         languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
           edges { size node { name color } }
         }
-      }
-    }
-    contributionsCollection {
-      totalCommitContributions
-      restrictedContributionsCount
-      contributionCalendar {
-        totalContributions
-        weeks { contributionDays { date contributionCount contributionLevel } }
       }
     }
   }
@@ -104,6 +113,17 @@ def all_days():
     return sorted(days.items())
 
 
+def all_repos():
+    """(total count, every public non-fork repository I own), a page of 100 at a time."""
+    repos, after = [], None
+    while True:
+        page = gql(REPOS_QUERY, {"login": LOGIN, "after": after})["user"]["repositories"]
+        repos += page["nodes"]
+        if not page["pageInfo"]["hasNextPage"]:
+            return page["totalCount"], repos
+        after = page["pageInfo"]["endCursor"]
+
+
 def streaks(days, today):
     """All-time total plus current and longest streak as (length, first day, last day).
     Input is sorted by date. Missing dates break a streak.
@@ -140,8 +160,10 @@ SKIP_LANGS = {"XSLT", "Makefile", "DTrace", "HTML", "Shell", "Batchfile", "CMake
 
 
 def collect():
-    u = gql(QUERY, {"login": LOGIN})["user"]
-    repos = u["repositories"]["nodes"]
+    res = gql(QUERY, {"login": LOGIN, "prs": f"author:{LOGIN} is:pr is:public",
+                      "issues": f"author:{LOGIN} is:issue is:public"})
+    u = res["user"]
+    repo_count, repos = all_repos()
     langs, colors = {}, {}
     for r in repos:
         for e in r["languages"]["edges"]:
@@ -165,10 +187,13 @@ def collect():
         "today": today,
         "streak": streaks(all_days(), today),
         "stars": sum(r["stargazerCount"] for r in repos),
-        "repos": u["repositories"]["totalCount"],
-        "commits": cc["totalCommitContributions"] + cc["restrictedContributionsCount"],
-        "prs": u["pullRequests"]["totalCount"],
-        "issues": u["issues"]["totalCount"],
+        "repos": repo_count,
+        # public commits over the calendar's 12 months; restrictedContributionsCount would add private PRs and
+        # reviews too, not just commits
+        "commits": sum(r["contributions"]["totalCount"] for r in cc["commitContributionsByRepository"]
+                       if not r["repository"]["isPrivate"]),
+        "prs": res["prs"]["issueCount"],
+        "issues": res["issues"]["issueCount"],
         "total": cc["contributionCalendar"]["totalContributions"],
         "active_days": sum(1 for _, c, _ in days if c > 0),
         "days_count": len(days),
@@ -214,13 +239,6 @@ PAL = {
         ribbon0="#d9481c", ribbon1="#a82a10", ribbonShadeO=".16", gutter="#6b5a2a", gutterO=".16",
         nextPage="#efe4c3", flap0="#cdbb86", flap1="#fffbef", flap2="#f3e8cb", flap3="#e4d5aa", curlShadeO=".16", blossom="#dc7690"),
 }
-
-
-def fontface(key):
-    f = FONTS[key]
-    return ("@font-face{font-family:'%s';font-style:%s;font-weight:%s;"
-            "src:url(data:font/woff2;base64,%s) format('woff2');}\n"
-            % (f["family"], f["style"], f["weight"], f["b64"]))
 
 
 CSS = (fontface("outfit") + fontface("jbmono") +
@@ -291,9 +309,6 @@ def luma(c):
     return .2126 * r + .7152 * g + .0722 * b
 
 
-EASE = ".45 0 .55 1"
-
-
 def card_frame(p, w, h, gid):
     return (f'<defs><style><![CDATA[{CSS}]]></style>'
             f'<linearGradient id="bg{gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{p["bg0"]}"/><stop offset="1" stop-color="{p["bg1"]}"/></linearGradient>'
@@ -306,17 +321,6 @@ def card_frame(p, w, h, gid):
 def date_span(a, b):
     f = lambda d: f"{d.strftime('%b').lower()} {d.day}"
     return f(a) if a == b else f"{f(a)} - {f(b)}"
-
-
-def smooth_fade_in(n=10):
-    """Smoothstep 0 -> 1 opacity stops; a linear ramp leaves a visible kink where the picture starts."""
-    return "".join(f'<stop offset="{i/n:.2f}" stop-color="#fff" stop-opacity="{3*(i/n)**2 - 2*(i/n)**3:.3f}"/>'
-                   for i in range(n + 1))
-
-
-def star_path(s):
-    k = s * 0.22
-    return f"M0,{-s:.1f} L{k:.1f},{-k:.1f} L{s:.1f},0 L{k:.1f},{k:.1f} L0,{s:.1f} L{-k:.1f},{k:.1f} L{-s:.1f},0 L{-k:.1f},{-k:.1f} Z"
 
 
 def stats_panel(theme, d):
@@ -345,7 +349,7 @@ def stats_panel(theme, d):
         body.append(f'<text x="{x}" y="222" class="m" font-size="11" fill="{p["muted"]}">{sub}</text>')
     # pline is laid out in user space: a gradient sized to a horizontal line's zero-height box isn't painted
     body.append('<line x1="56" y1="262" x2="636" y2="262" stroke="url(#pline)" stroke-width="1.2"/>')
-    rows = [("star", "stars", d["stars"]), ("commit", "commits", d["commits"]),
+    rows = [("star", "stars", d["stars"]), ("commit", "commits · 1y", d["commits"]),
             ("pr", "pull requests", d["prs"]), ("issue", "issues", d["issues"]), ("repo", "repos", d["repos"])]
     for i, (ic, label, val) in enumerate(rows):
         x = 56 + i * 118
@@ -372,7 +376,7 @@ def stats_panel(theme, d):
 <linearGradient id="pgrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p['grad0']}"/><stop offset="1" stop-color="{p['grad1']}"/></linearGradient>
 <linearGradient id="pbar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p['accent2']}"/><stop offset="1" stop-color="{p['accent']}"/></linearGradient>
 <linearGradient id="pline" gradientUnits="userSpaceOnUse" x1="56" y1="0" x2="636" y2="0"><stop offset="0" stop-color="{p['accent']}" stop-opacity=".7"/><stop offset="1" stop-color="{p['accent']}" stop-opacity="0"/></linearGradient>
-<linearGradient id="pfade" gradientUnits="userSpaceOnUse" x1="{ix}" y1="0" x2="{ix+230}" y2="0">{smooth_fade_in()}</linearGradient>
+<linearGradient id="pfade" gradientUnits="userSpaceOnUse" x1="{ix}" y1="0" x2="{ix+230}" y2="0">{smooth_fade(fade_in=True)}</linearGradient>
 <mask id="pmask"><rect x="{ix}" y="0" width="{IW}" height="{H}" fill="url(#pfade)"/></mask>
 <filter id="pblur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
 <filter id="pglow" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="14"/></filter>
@@ -837,8 +841,7 @@ def wrap_snake():
         raw = open(path, encoding="utf-8").read()
         if 'aria-label="contribution snake of' in raw:
             continue
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(punch(snake_card(theme, raw), theme == "dark"))
+        write_svg(path, punch(snake_card(theme, raw), theme == "dark"))
         print(f"framed {path} ({os.path.getsize(path)//1024} KB)")
 
 
@@ -853,8 +856,7 @@ def main():
             svg = fn(theme, d)
             if name != "toc":   # the contents page is a book page, with a curled corner instead of binder holes
                 svg = punch(svg, theme == "dark")
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(svg)
+            write_svg(path, svg)
             print(f"wrote {path} ({os.path.getsize(path)//1024} KB)")
     print(json.dumps({k: v for k, v in d.items() if k != "weeks"}, ensure_ascii=False, default=str))
 
