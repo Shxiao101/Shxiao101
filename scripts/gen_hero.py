@@ -318,11 +318,18 @@ def leaves(w, h, seed=21):
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
-def paper_sheet(x0, y0, x1, y1, seed=101):
+# the rip down the last page's right edge, traced from a sketch: (how far in from the rightmost point, px of the
+# sketch; how far down, 0-1).  It starts in from the top corner, cuts back further, bellies out, bites in sharply
+# halfway down, eases out again and runs down to a point at the foot.
+RIP = [(155, 0), (170, .036), (187, .07), (182, .125), (185, .164), (158, .246), (130, .309), (115, .364),
+       (120, .414), (142, .474), (178, .559), (164, .588), (142, .651), (130, .717), (132, .803), (108, .855),
+       (70, .928), (0, 1)]
+
+def paper_sheet(x0, y0, x1, y1, depth=.38, seed=101):
     """The last page as a loose sheet, torn out of the book: its top, foot and outer edge are cut - square corners,
     straight to the eye but faintly uneven - and its right edge, where a right-opening book is bound, is ripped all
-    the way down.  The rip wanders at random, bites deeper here and there and frays; along it the paper split in
-    its thickness, leaving a pale strip of core of uneven width, like the stub of a page torn from the gutter.
+    the way down along RIP (scaled `depth` px per sketch px across, to the sheet's height down), frayed a little;
+    along the rip the paper split in its thickness, leaving a pale strip of core of uneven width.
     Returns (outline, the rip and the inner edge of its core as polylines, the core as a polygon)."""
     rnd = random.Random(seed)
 
@@ -331,29 +338,26 @@ def paper_sheet(x0, y0, x1, y1, seed=101):
         return [(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-amp, amp) if k else 0),
                  a[1] + (b[1] - a[1]) * k / n + (rnd.uniform(-amp, amp) if k else 0)) for k in range(n)]
 
-    ys, into, cores, y, walk, drift, core = [], [], [], y0, 0.0, 0.0, 3.0
-    while y < y1:
-        t = (y - y0) / (y1 - y0)
-        # the hand tearing it swings: the rip keeps drifting one way for a while, then comes round
-        drift = drift * .9 + rnd.uniform(-.9, .9)
-        walk = max(-14, min(14, walk + drift))
-        if abs(walk) == 14:
-            drift = -drift * .5
-        ys.append(y)
-        into.append(16 + walk + 5 * math.sin(t * 6 + 1)
-                    + rnd.uniform(-1.5, 1.5) + (rnd.uniform(5, 10) if rnd.random() < .06 else 0))
-        core = max(1, min(10, core + rnd.uniform(-1.6, 1.6)))
-        cores.append(core)
-        y += rnd.uniform(2.5, 6)
-    ys.append(y1)
-    into.append(into[-1])
-    cores.append(core)
-
-    def smooth(v, r=3):             # round off the spikes, keeping the big swings and bites
+    def smooth(v, r=1):
         return [sum(v[max(0, i - r):i + r + 1]) / len(v[max(0, i - r):i + r + 1]) for i in range(len(v))]
 
-    into, cores = smooth(into, 2), smooth(cores)
-    rip = [(x1 - max(1, d + rnd.uniform(-.6, .6)), y) for d, y in zip(into, ys)]   # a faint fray on top
+    # walk the sketch's segments a few px at a time, with a faint fray
+    xs, ys = [], []
+    for (u0, v0), (u1, v1) in zip(RIP, RIP[1:]):
+        a, b = (x1 - u0 * depth, y0 + v0 * (y1 - y0)), (x1 - u1 * depth, y0 + v1 * (y1 - y0))
+        n = max(1, round(math.dist(a, b) / 4))
+        for k in range(n):
+            xs.append(a[0] + (b[0] - a[0]) * k / n + (rnd.uniform(-1, 1) if xs else 0))
+            ys.append(a[1] + (b[1] - a[1]) * k / n)
+    xs.append(x1)
+    ys.append(y1)
+    xs = [xs[0]] + smooth(xs)[1:-1] + [xs[-1]]
+    cores, core = [], 3.0
+    for _ in xs:
+        core = max(1, min(8, core + rnd.uniform(-1.4, 1.4)))
+        cores.append(core)
+    cores = smooth(cores, 3)
+    rip = list(zip(xs, ys))
     inner = [(x - c - rnd.uniform(0, .8), y) for (x, y), c in zip(rip, cores)]
     pts = cut((x0, y0), rip[0]) + rip + cut(rip[-1], (x0, y1))[1:] + cut((x0, y1), (x0, y0))
     line = lambda ps: " ".join(f"{x:.1f},{y:.1f}" for x, y in ps)
@@ -366,7 +370,7 @@ def footer(theme):
     css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
-    TR = FW - 72                  # the text's right edge, clear of the rip
+    TR = FW - 100                 # the text's right edge, clear of the rip
     # the sheet sits a few px in from the lower right, leaving room for the shadow it casts
     outline, rip, inner, core = paper_sheet(1, 1, FW - 7, FH - 8)
     # the rip: the paper's pale core along it, its frayed edge, and a faint shadow where the core lifts
