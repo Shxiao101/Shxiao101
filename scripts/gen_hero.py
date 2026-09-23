@@ -318,21 +318,21 @@ def leaves(w, h, seed=21):
             f'</use></g></g></g></g></g>')
     return "\n".join(out)
 
-def torn_corner(w, h, seed=101):
-    """The last page's bottom-right corner, torn away: a ragged line from the right edge, just below the lowest binder
-    hole, down to the foot 300px in, bowing a little into the page.  Returns (card outline, border without the torn
-    stretch, the tear as a polyline) - the rest of the card keeps its rounded corners."""
+def torn_corner(w, h, right=100, foot=400, seed=101):
+    """The last page's bottom-right corner, torn away: a ragged line from `right` px down the right edge to `foot` px
+    in along the foot, bowing a little into the page.  Returns (card outline, border without the torn stretch, the
+    tear as a polyline, the normal pointing into the page) - the other corners stay rounded."""
     rnd = random.Random(seed)
-    (ax, ay), (bx, by) = (w, h - 32), (w - 300, h)
+    (ax, ay), (bx, by) = (w, right), (w - foot, h)
     length = ((bx - ax) ** 2 + (by - ay) ** 2) ** .5
     nx, ny = (ay - by) / length, (bx - ax) / length      # unit normal pointing into the page
     pts, t = [(ax, ay)], 0.0
     while True:
-        t += rnd.uniform(.005, .012)
+        t += rnd.uniform(.0035, .008)
         if t >= 1:
             break
         # the bow, a slow wander, fine fibrous jitter, and now and then a small nick
-        off = (12 * 4 * t * (1 - t) + 2.5 * math.sin(t * 19 + 1) + 1.5 * math.sin(t * 47)
+        off = (20 * 4 * t * (1 - t) + 2.5 * math.sin(t * 19 + 1) + 1.5 * math.sin(t * 47)
                + rnd.uniform(-1.3, 1.3) + (rnd.uniform(2, 3.5) if rnd.random() < .07 else 0))
         pts.append((ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off))
     pts.append((bx, by))
@@ -346,6 +346,7 @@ def footer(theme):
     css = "".join(fontface(k) for k in ("caveat", "jbmono")) + BASE_CSS
     FW, FH = 1200, 380
     IW = 485                      # footer.jpg is 970x760 -> 485x380, pinned to the left edge
+    TR = FW - 310                 # the text's right edge, clear of the torn corner
     outline, border, tear, (nx, ny) = torn_corner(FW, FH)
     # the torn edge: the paper's pale core along the rip, and a faint shadow where the fibres lift
     rim, rimO, shadeO = ("#fff3c4", ".32", ".45") if theme == "dark" else ("#ffffff", "1", ".14")
@@ -378,9 +379,9 @@ def footer(theme):
 <image href="data:image/jpeg;base64,{foot_b64}" x="0" y="0" width="{IW}" height="{FH}" preserveAspectRatio="xMidYMid slice" mask="url(#fmask)" filter="url(#ftone)"/>
 {leaves(FW, FH)}
 <rect width="{FW}" height="{FH}" filter="url(#grain)" opacity="{p['grainO']}"/>
-<text x="{FW-72}" y="196" text-anchor="end" class="foot-en" fill="{p['footText']}">{FOOT_LINE}</text>
-<line x1="{FW-252}" y1="248" x2="{FW-72}" y2="248" stroke="{p['border']}" stroke-opacity=".5"/>
-<text x="{FW-72}" y="278" text-anchor="end" class="over" fill="{p['footMono']}">{FOOT_SUB}</text>
+<text x="{TR}" y="196" text-anchor="end" class="foot-en" fill="{p['footText']}">{FOOT_LINE}</text>
+<line x1="{TR-180}" y1="248" x2="{TR}" y2="248" stroke="{p['border']}" stroke-opacity=".5"/>
+<text x="{TR}" y="278" text-anchor="end" class="over" fill="{p['footMono']}">{FOOT_SUB}</text>
 <path d="{border}" fill="none" stroke="{p['border']}" stroke-opacity="{p['borderO']}" stroke-width="1.5"/>
 <polyline points="{tear}" transform="translate({nx * 3:.2f} {ny * 3:.2f})" fill="none" stroke="#000" stroke-opacity="{shadeO}" stroke-width="1.2" stroke-linejoin="round"/>
 <polyline points="{tear}" fill="none" stroke="{rim}" stroke-opacity="{rimO}" stroke-width="5" stroke-linejoin="round" filter="url(#fibre)"/>
@@ -394,8 +395,9 @@ def main():
     for theme in ("dark", "light"):
         for name, fn in (("hero", hero), ("divider", divider), ("footer", footer)):
             path = os.path.join(OUT, f"{name}-{theme}.svg")
-            # hero and footer art sits on the left, so their binder holes go down the right edge
-            svg = fn(theme) if name == "divider" else punch(fn(theme), theme == "dark", side="right")
+            # the hero's art sits on the left, so its binder holes go down the right edge; the divider is a rule, and
+            # the footer is the last page, torn loose from the binder
+            svg = punch(fn(theme), theme == "dark", side="right") if name == "hero" else fn(theme)
             write_svg(path, svg)
             print(f"{path}: {os.path.getsize(path)/1024:.0f} KB")
 
