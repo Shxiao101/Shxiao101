@@ -12,6 +12,7 @@ personal token matches the Actions run.  The calendar and streaks are github's o
 includes private contributions only as far as the token's viewer may see them (or the profile shares them).
 """
 import base64
+import colorsys
 import datetime as dt
 import html
 import json
@@ -251,7 +252,7 @@ PAL = {
         spark="#fff2b0", toneR="0 .5 .9", toneG="0 .46 .82", toneB="0 .4 .7",
         # bookshelf and contents page
         wood="#6b4a2a", wood0="#553820", wood1="#3a2613", woodLine="#1e1208", wallShade="#000", wallShadeO=".55",
-        bookShade="#000", bookShadeO=".55", clothDim=".2", foil="#ecd27a", foilDark="#2a1d0a",
+        bookShade="#000", bookShadeO=".55", clothDim="0", foil="#ecd27a", foilDark="#2a1d0a",
         vase0="#7aa593", vase1="#3c5c50", metal0="#8a826c", metal1="#4a453a", stem="#8a5a32",
         ribbon0="#e0552a", ribbon1="#9c3a18", ribbonShadeO=".35", gutter="#000", gutterO=".42",
         nextPage="#221e13", flap0="#0e0d08", flap1="#5c5238", flap2="#39321f", flap3="#282316", curlShadeO=".5", blossom="#f2a2b5",
@@ -340,6 +341,40 @@ def mix(a, b, t):
 def luma(c):
     r, g, b = (v / 255 for v in rgb(c))
     return .2126 * r + .7152 * g + .0722 * b
+
+
+def hex_to_hls(hex_str):
+    r, g, b = (v / 255.0 for v in rgb(hex_str))
+    return colorsys.rgb_to_hls(r, g, b)
+
+
+def hls_to_hex(h, l, s):
+    rgb_t = colorsys.hls_to_rgb(h, max(0.05, min(0.95, l)), max(0.1, min(1.0, s)))
+    return "#" + "".join(f"{round(x * 255):02x}" for x in rgb_t)
+
+
+def hue_dist(h1, h2):
+    diff = abs(h1 - h2)
+    return min(diff, 1.0 - diff)
+
+
+def resolve_cloth_colors(langs, fallback):
+    """100% faithful to GitHub official colors. If adjacent languages fall in the exact same hue family
+    (e.g. Python & TypeScript both blue, Hue dist < 30°), automatically expand luminance contrast along
+    their exact official hue angles so they never look like the same language."""
+    raw_colors = [c or fallback[i % len(fallback)] for i, (_, _, c) in enumerate(langs)]
+    hls_list = [hex_to_hls(c) for c in raw_colors]
+    out = list(raw_colors)
+    n = len(langs)
+    for i in range(n - 1):
+        h1, l1, s1 = hls_list[i]
+        h2, l2, s2 = hls_list[i + 1]
+        if hue_dist(h1, h2) < 0.08 and abs(l1 - l2) < 0.20:
+            out[i] = hls_to_hex(h1, min(0.24, l1 * 0.60), max(0.45, min(0.70, s1)))
+            out[i + 1] = hls_to_hex(h2, max(0.52, l2 * 1.15), min(0.85, s2 * 1.25))
+            hls_list[i] = hex_to_hls(out[i])
+            hls_list[i + 1] = hex_to_hls(out[i + 1])
+    return {langs[i][0]: out[i] for i in range(n)}
 
 
 def card_frame(p, w, h, gid):
@@ -564,11 +599,7 @@ def shelf_card(theme, d):
     W, H = 1200, 336
     dark = theme == "dark"
     rnd = random.Random(7)
-    # Language-specific iconic cloth colors: ensure adjacent Python and TypeScript are distinctly identifiable
-    LANG_CLOTH = {
-        "python": "#e5a823",      # Iconic Python Gold / Amber
-        "typescript": "#2f74c0",  # Microsoft TypeScript Royal Blue
-    }
+
     langs = d["langs"]
     N, X0, X1 = 34, 60, 1046
     if len(langs) > N:
@@ -583,12 +614,13 @@ def shelf_card(theme, d):
         if not candidates:
             break
         i = max(candidates, key=lambda i: counts[i] - raw[i])
-        counts[i] -= 1
+    cloth_map = resolve_cloth_colors(langs, p["langs"])
     vols = []
     for si, ((name, _, color), n) in enumerate(zip(langs, counts)):
-        base_color = LANG_CLOTH.get(name.lower(), color or p["langs"][si % len(p["langs"])])
-        cloth = mix(base_color, "#6b4a2b", .14)   # dyed book cloth, keeping hue rich and distinct
-        cloth = mix(cloth, "#000", float(p["clothDim"]))
+        base_color = cloth_map.get(name, color or p["langs"][si % len(p["langs"])])
+        cloth = base_color
+        if p["clothDim"] != "0":
+            cloth = mix(cloth, "#000", float(p["clothDim"]))
         bw, bh = rnd.uniform(24, 31), rnd.uniform(146, 172)
         for k in range(n):   # a set, but no two volumes quite alike: worn, faded, a little taller or thinner
             vols.append({"si": si, "name": name, "first": k == 0, "idx": k, "w": bw * rnd.uniform(.84, 1.16),
