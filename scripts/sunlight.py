@@ -26,7 +26,8 @@ def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
         light, light_blend, light_peak = "#ffe9a8", "screen", (.30, .42)
         shade, shade_peak = "#000", (.30, .40)
     else:
-        light, light_blend, light_peak = "#ffffff", "normal", (.55, .75)
+        # Soft warm golden afternoon sunlight: gentle sheen that warms the books without bleaching
+        light, light_blend, light_peak = "#fae288", "normal", (.14, .22)
         shade, shade_peak = None, None
 
     def fall(name, color):

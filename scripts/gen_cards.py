@@ -359,21 +359,39 @@ def hue_dist(h1, h2):
 
 
 def resolve_cloth_colors(langs, fallback):
-    """100% faithful to GitHub official colors. If adjacent languages fall in the exact same hue family
-    (e.g. Python & TypeScript both blue, Hue dist < 30°), automatically expand luminance contrast along
-    their exact official hue angles so they never look like the same language."""
+    """100% faithful to GitHub official colors with zero hardcoded language names.
+    Detects any languages on the shelf that share the same color family (Hue distance < 30°),
+    and automatically polarizes lightness (dominant -> deep Oxford shade L~0.24, second -> bright
+    Royal shade L~0.54, third -> light tint L~0.72) while strictly preserving each language's
+    exact GitHub official hue angle. Non-colliding languages use 100% untouched GitHub colors."""
     raw_colors = [c or fallback[i % len(fallback)] for i, (_, _, c) in enumerate(langs)]
+    n = len(langs)
     hls_list = [hex_to_hls(c) for c in raw_colors]
     out = list(raw_colors)
-    n = len(langs)
-    for i in range(n - 1):
-        h1, l1, s1 = hls_list[i]
-        h2, l2, s2 = hls_list[i + 1]
-        if hue_dist(h1, h2) < 0.08 and abs(l1 - l2) < 0.20:
-            out[i] = hls_to_hex(h1, min(0.24, l1 * 0.60), max(0.45, min(0.70, s1)))
-            out[i + 1] = hls_to_hex(h2, max(0.52, l2 * 1.15), min(0.85, s2 * 1.25))
-            hls_list[i] = hex_to_hls(out[i])
-            hls_list[i + 1] = hex_to_hls(out[i + 1])
+
+    visited = set()
+    clusters = []
+    for i in range(n):
+        if i in visited:
+            continue
+        cluster = [i]
+        visited.add(i)
+        for j in range(i + 1, n):
+            if j not in visited and hue_dist(hls_list[i][0], hls_list[j][0]) < 0.083:
+                cluster.append(j)
+                visited.add(j)
+        clusters.append(cluster)
+
+    for cluster in clusters:
+        if len(cluster) == 1:
+            continue
+        levels = [0.24, 0.54, 0.72, 0.38, 0.62]
+        for rank, idx in enumerate(cluster):
+            h, l, s = hls_list[idx]
+            target_l = levels[rank % len(levels)]
+            target_s = min(0.85, max(0.45, s * 1.15))
+            out[idx] = hls_to_hex(h, target_l, target_s)
+
     return {langs[i][0]: out[i] for i in range(n)}
 
 
@@ -473,7 +491,9 @@ def stats_panel(theme, d):
 
 SHELF_Y = 258          # top of the shelf board, where the books stand
 ROMAN_NUMS = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
-              "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"]
+              "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
+              "XXI", "XXII", "XXIII", "XXIV", "XXV", "XXVI", "XXVII", "XXVIII", "XXIX", "XXX",
+              "XXXI", "XXXII", "XXXIII", "XXXIV", "XXXV"]
 
 
 def roman(n):
