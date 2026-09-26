@@ -1200,8 +1200,8 @@ def bookcase(p, d, rows, light=""):
         # inside the opening: the back panel, then the ceiling, floor and walls running back to it
         # warm under-shelf recessed spotlight wash in center of each shelf
         spot_w = (bx1 - bx0) * 0.72
-        spotlight = (f'<ellipse cx="{(bx0 + bx1) / 2:.1f}" cy="{by0 + 4:.1f}" rx="{spot_w / 2:.1f}" ry="48" '
-                     f'fill="url(#caseGlow)" opacity=".65"/>')
+        spotlight = (f'<ellipse cx="{(bx0 + bx1) / 2:.1f}" cy="{by0 + 2:.1f}" rx="{spot_w / 2:.1f}" ry="42" '
+                     f'fill="url(#caseGlow)" opacity=".6"/>')
         # inside the opening: the back panel, then the ceiling, floor and walls running back to it
         inner = (f'<rect x="{bx0:.1f}" y="{by0:.1f}" width="{bx1 - bx0:.1f}" height="{byf - by0:.1f}" fill="url(#back)"/>'
                  f'{spotlight}'
@@ -1227,9 +1227,8 @@ def bookcase(p, d, rows, light=""):
             bx, by = back(x, yf - ch, at)                      # the book, set back a little from the shelf's edge
             # its shadow on the back panel, down and to the right of the light, and where it meets the shelf
             sx, sy = back(x, yf - ch)
-            shadows.append(f'<rect x="{sx + 9:.1f}" y="{sy + 7:.1f}" width="{cw * DEPTH:.1f}" height="{ch * DEPTH - 7:.1f}"/>'
-                           f'<ellipse cx="{bx + cw * at / 2:.1f}" cy="{by + ch * at + 1:.1f}" rx="{cw * at * .52:.1f}" ry="5" fill="#000" opacity=".45"/>')
-
+            shadows.append(f'<rect x="{sx + 4:.1f}" y="{sy + 4:.1f}" width="{cw * DEPTH:.1f}" height="{ch * DEPTH - 4:.1f}" rx="3"/>'
+                           f'<ellipse cx="{bx + cw * at / 2:.1f}" cy="{by + ch * at + 1:.1f}" rx="{cw * at * .48:.1f}" ry="4.5" fill="#000" opacity=".35"/>')
             # Book display ledge (small wooden lip holding the book face-out)
             lip_w = cw * at + 12
             lip_x = bx - 6
@@ -1250,8 +1249,8 @@ def bookcase(p, d, rows, light=""):
                          f'fill="{p["muted"]}">nothing pinned yet</text>')
         landed = .2 + (sum(len(r) for r in rows[:t]) + n) * .15 + .6
         clips.append(f'<clipPath id="tier{t}"><rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{yf - y0}"/></clipPath>')
-        body.append(f'<g clip-path="url(#tier{t})">{inner}{light}'
-                    f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".4" filter="url(#wshade)">{"".join(shadows)}</g></g></g>'
+        body.append(f'<g clip-path="url(#tier{t})">{inner}'
+                    f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".28" filter="url(#wshade)">{"".join(shadows)}</g></g></g>'
                     + "".join(books)
                     # the shelf's front edge with bevel and wood grain
                     + f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="{board}" fill="url(#wood)"/>'
@@ -1301,14 +1300,9 @@ def works_card(theme, d):
     # the bookcase is made of the same light as the picture: honey-coloured wood and a pale gold back, toned with it
     pw = dict(p, wood0=tone("#e2ae62", p), wood1=tone("#b67a38", p), woodLine=tone("#7a4a1c", p),
               back0=tone("#f9e2a8", p), back1=tone("#eec07a", p))
-    # dappled shade of blossom and a few bright patches, falling inside the shelves behind the books
     rnd = random.Random(21)
-    dapple = "".join(f'<path d="{BLOSSOM_PETAL}" transform="translate({rnd.uniform(0, 700):.0f} {rnd.uniform(0, 700):.0f}) '
-                     f'rotate({rnd.uniform(0, 360):.0f}) scale({rnd.uniform(5, 9):.1f})"/>' for _ in range(14))
-    spots = "".join(f'<ellipse cx="{rnd.uniform(0, 700):.0f}" cy="{rnd.uniform(0, 700):.0f}" rx="{rnd.uniform(40, 80):.0f}" '
-                    f'ry="{rnd.uniform(25, 45):.0f}"/>' for _ in range(5))
-    light = (f'<g fill="{tone("#8a4a10", p)}" opacity=".16" filter="url(#dapple)">{dapple}</g>'
-             f'<g fill="{tone("#ffe9a6", p)}" opacity=".3" filter="url(#dapple)">{spots}</g>')
+    # clean and serene interior without muddy dappled shade
+    light = ""
     case_defs, case, cw, chh = bookcase(pw, d, rows, light)
     W, M = WORKS_W, WORKS_M
     H = chh + 2 * M
