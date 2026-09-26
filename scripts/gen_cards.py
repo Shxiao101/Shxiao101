@@ -1110,6 +1110,11 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
               # the jacket's fold round the spine, on the right
               f'<path d="M{cw - 7},0 V{ch}" stroke="#000" stroke-opacity=".08"/><path d="M{cw - 8.2},0 V{ch}" stroke="#fff" stroke-opacity=".2"/>'
               + head_row + title + author)
+    # silk bookmark ribbon dangling from top of book
+    ribbon_col = p.get("ribbon0", "#e0552a")
+    ribbon = (f'<path d="M{cw * .68:.1f},-1 C{cw * .68 - 3:.1f},10 {cw * .68 + 7:.1f},22 {cw * .68 + 3:.1f},34 '
+              f'C{cw * .68 + 1:.1f},42 {cw * .68 - 4:.1f},50 {cw * .68 - 1:.1f},58" '
+              f'fill="none" stroke="{ribbon_col}" stroke-width="2.2" stroke-linecap="round" opacity=".88"/>')
     note = ""
     if (today - v["pushed"]).days <= FRESH_DAYS:   # a note in a shop assistant's hand, taped on: still being written
         note = (f'<g transform="translate({cw - 46} {oy - 22}) rotate(7)">'
@@ -1136,9 +1141,12 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
     copy = wrap_blurb(v["desc"], bs, bw) or ["(no blurb yet)"]
     if len(copy) > 3:
         copy = copy[:2] + [clip_text("jbmono", copy[2].rstrip(" ,.;:-，。、") + "...", bs, bw)]
+    obi_fold = (f'<rect y="{oy}" width="{cw}" height="2.2" fill="#fff" opacity=".35"/>'
+                f'<rect y="{oy + 2.2}" width="{cw}" height="1.8" fill="#000" opacity=".12"/>'
+                f'<rect y="{ch - 2.5}" width="{cw}" height="2.5" fill="#000" opacity=".22"/>')
     obi = (f'<rect y="{oy}" width="{cw}" height="{ch - oy}" fill="{bg}"/>'
            f'<path d="M{cw - 7},{oy} V{ch}" stroke="#000" stroke-opacity=".1"/>'
-           f'<rect y="{oy}" width="{cw}" height="1" fill="#fff" opacity=".45"/>'
+           f'{obi_fold}'
            + "".join(f'<text x="14" y="{oy + 28 + j * 19}" class="m" font-size="{bs}" font-weight="700" fill="{oink}">{esc(ln)}</text>'
                      for j, ln in enumerate(copy))
            + badge +
@@ -1150,7 +1158,7 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
     about = f"{v['name']}: {v['desc']}" if v["desc"] else v["name"]
     return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}" rx="2"/></clipPath>{fade}',
             f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
-            f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{note}')
+            f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{ribbon}{note}')
 
 
 WORKS_W = 1200             # as wide as the other cards
@@ -1179,7 +1187,7 @@ def bookcase(p, d, rows, light=""):
     vols = d["works"]
     cw, ch = COVER_W, COVER_H
     cols = max(2, max(len(r) for r in rows))
-    gap, pad, side, crown, plinth, board, head = 14, 16, 18, 16, 12, 20, 30
+    gap, pad, side, crown, plinth, board, head = 14, 16, 22, 22, 16, 22, 32
     W = cols * cw + (cols - 1) * gap + 2 * (pad + side)
     tier = head + ch + board
     H = crown + len(rows) * tier + plinth
@@ -1195,12 +1203,21 @@ def bookcase(p, d, rows, light=""):
         x0, x1, y0, yf = side, W - side, crown + t * tier, crown + t * tier + head + ch
         (bx0, by0), (bx1, byf) = back(x0, y0), back(x1, yf)
         # inside the opening: the back panel, then the ceiling, floor and walls running back to it
+        # warm under-shelf recessed spotlight wash in center of each shelf
+        spot_w = (bx1 - bx0) * 0.72
+        spotlight = (f'<ellipse cx="{(bx0 + bx1) / 2:.1f}" cy="{by0 + 4:.1f}" rx="{spot_w / 2:.1f}" ry="48" '
+                     f'fill="url(#caseGlow)" opacity=".65"/>')
+        # inside the opening: the back panel, then the ceiling, floor and walls running back to it
         inner = (f'<rect x="{bx0:.1f}" y="{by0:.1f}" width="{bx1 - bx0:.1f}" height="{byf - by0:.1f}" fill="url(#back)"/>'
+                 f'{spotlight}'
                  f'<rect x="{bx0:.1f}" y="{by0:.1f}" width="{bx1 - bx0:.1f}" height="40" fill="url(#under)"/>'
                  f'<path d="{poly((x0, y0), (x1, y0), (bx1, by0), (bx0, by0))}" fill="{mix(b1, "#000", .35)}"/>'
                  f'<path d="{poly((x0, yf), (x1, yf), (bx1, byf), (bx0, byf))}" fill="url(#floor)"/>'
                  f'<path d="{poly((x0, y0), (bx0, by0), (bx0, byf), (x0, yf))}" fill="{mix(b1, "#000", .2)}"/>'
                  f'<path d="{poly((x1, y0), (bx1, by0), (bx1, byf), (x1, yf))}" fill="{mix(b0, "#fff", .06)}"/>'
+                 # Brass shelf pins / brackets inside the left & right sidewalls
+                 f'<rect x="{bx0 - 3:.1f}" y="{byf - 7:.1f}" width="5" height="3.5" rx="1" fill="url(#metal)" opacity=".75"/>'
+                 f'<rect x="{bx1 - 2:.1f}" y="{byf - 7:.1f}" width="5" height="3.5" rx="1" fill="url(#metal)" opacity=".75"/>'
                  f'<path d="M{x0},{y0} L{bx0:.1f},{by0:.1f} L{bx1:.1f},{by0:.1f} L{x1},{y0} M{x0},{yf} L{bx0:.1f},{byf:.1f} L{bx1:.1f},{byf:.1f} L{x1},{yf} '
                  f'M{bx0:.1f},{by0:.1f} V{byf:.1f} M{bx1:.1f},{by0:.1f} V{byf:.1f}" fill="none" stroke="#000" stroke-opacity=".18"/>')
         n = len(row)
@@ -1216,8 +1233,22 @@ def bookcase(p, d, rows, light=""):
             # its shadow on the back panel, down and to the right of the light, and where it meets the shelf
             sx, sy = back(x, yf - ch)
             shadows.append(f'<rect x="{sx + 9:.1f}" y="{sy + 7:.1f}" width="{cw * DEPTH:.1f}" height="{ch * DEPTH - 7:.1f}"/>'
-                           f'<rect x="{bx + 2:.1f}" y="{by + ch * at - 5:.1f}" width="{cw * at + 4:.1f}" height="9" rx="4"/>')
-            books.append(f'<g transform="translate({bx:.1f} {by:.1f}) scale({at:.4f})"><g class="cv" style="animation-delay:{.2 + i * .15:.2f}s">{art}</g></g>')
+                           f'<ellipse cx="{bx + cw * at / 2:.1f}" cy="{by + ch * at + 1:.1f}" rx="{cw * at * .52:.1f}" ry="5" fill="#000" opacity=".45"/>')
+
+            # Book display ledge (small wooden lip holding the book face-out)
+            lip_w = cw * at + 12
+            lip_x = bx - 6
+            lip_y = by + ch * at - 4
+            book_stand = (f'<path d="M{lip_x:.1f},{lip_y + 4:.1f} L{lip_x + 3:.1f},{lip_y:.1f} L{lip_x + lip_w - 3:.1f},{lip_y:.1f} L{lip_x + lip_w:.1f},{lip_y + 4:.1f} Z" '
+                          f'fill="url(#wood)" opacity=".9"/>'
+                          f'<line x1="{lip_x + 3:.1f}" y1="{lip_y:.1f}" x2="{lip_x + lip_w - 3:.1f}" y2="{lip_y:.1f}" stroke="#fff" stroke-width=".8" opacity=".35"/>')
+
+            # Natural display pose: slight rotational ease depending on column position
+            tilt = -1.2 if (k == 0 and n > 1) else (1.2 if (k == n - 1 and n > 1) else 0)
+            tilt_tf = f' transform="rotate({tilt} {cw / 2} {ch})"' if tilt else ""
+
+            books.append(f'<g transform="translate({bx:.1f} {by:.1f}) scale({at:.4f})">{book_stand}'
+                         f'<g class="cv" style="animation-delay:{.2 + i * .15:.2f}s"{tilt_tf}>{art}</g></g>')
             x += cw + gap
         if not vols and t == 0:
             books.append(f'<text x="{W / 2}" y="{yf - ch / 2:.0f}" text-anchor="middle" class="h" font-size="28" '
@@ -1227,14 +1258,37 @@ def bookcase(p, d, rows, light=""):
         body.append(f'<g clip-path="url(#tier{t})">{inner}{light}'
                     f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="#000" opacity=".4" filter="url(#wshade)">{"".join(shadows)}</g></g></g>'
                     + "".join(books)
-                    # the shelf's front edge
+                    # the shelf's front edge with bevel and wood grain
                     + f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="{board}" fill="url(#wood)"/>'
-                    f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="1.2" fill="#fff" opacity=".3"/>'
+                    f'<rect x="{x0}" y="{yf}" width="{x1 - x0}" height="1.4" fill="#fff" opacity=".35"/>'
+                    f'<rect x="{x0}" y="{yf + board - 1.2:.1f}" width="{x1 - x0}" height="1.2" fill="#000" opacity=".3"/>'
                     f'<path d="M{x0},{yf + board * .45:.1f} C{W * .35:.0f},{yf + board * .45 - 1.5:.1f} {W * .6:.0f},{yf + board * .45 + 2:.1f} {x1},{yf + board * .45:.1f}" '
-                    f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".25" stroke-width=".8"/>')
-    frame = (f'<rect width="{side}" height="{H}" fill="url(#post)"/><rect x="{W - side}" width="{side}" height="{H}" fill="url(#post)"/>'
-             f'<rect width="{W}" height="{crown}" fill="url(#wood)"/><rect width="{W}" height="1.2" fill="#fff" opacity=".3"/>'
-             f'<rect y="{H - plinth}" width="{W}" height="{plinth}" fill="{mix(wood1, "#000", .15)}"/>'
+                    f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".25" stroke-width=".8"/>'
+                    # Brass brackets under the shelf ends
+                    f'<path d="M{x0},{yf + board} L{x0 + 8},{yf + board} L{x0},{yf + board + 8} Z" fill="url(#metal)" opacity=".8"/>'
+                    f'<path d="M{x1},{yf + board} L{x1 - 8},{yf + board} L{x1},{yf + board + 8} Z" fill="url(#metal)" opacity=".8"/>')
+    # Classical architectural cabinetry: fluted pilasters on posts, stepped crown molding at top
+    post_w = side
+    flute_l = "".join(f'<line x1="{side * frac:.1f}" y1="{crown + 8}" x2="{side * frac:.1f}" y2="{H - plinth - 8}" stroke="{p["woodLine"]}" stroke-width="1.2" stroke-opacity=".32"/>'
+                      for frac in (0.32, 0.5, 0.68))
+    flute_r = "".join(f'<line x1="{W - side + side * frac:.1f}" y1="{crown + 8}" x2="{W - side + side * frac:.1f}" y2="{H - plinth - 8}" stroke="{p["woodLine"]}" stroke-width="1.2" stroke-opacity=".32"/>'
+                      for frac in (0.32, 0.5, 0.68))
+    crown_molding = (
+        f'<rect x="-4" y="-3" width="{W + 8}" height="5" rx="1.5" fill="url(#wood)"/>'
+        f'<rect x="-4" y="-3" width="{W + 8}" height="1.2" fill="#fff" opacity=".4"/>'
+        f'<rect x="-2" y="2" width="{W + 4}" height="4" fill="url(#wood)"/>'
+        f'<rect y="6" width="{W}" height="{crown - 6}" fill="url(#wood)"/>'
+        f'<line x1="0" y1="{crown}" x2="{W}" y2="{crown}" stroke="{p["woodLine"]}" stroke-width="1" stroke-opacity=".4"/>'
+    )
+    plinth_base = (
+        f'<rect x="-3" y="{H - plinth}" width="{W + 6}" height="{plinth}" rx="1" fill="{mix(wood1, "#000", .15)}"/>'
+        f'<line x1="-3" y1="{H - plinth}" x2="{W + 3}" y2="{H - plinth}" stroke="#fff" stroke-width="1" stroke-opacity=".25"/>'
+        f'<line x1="-3" y1="{H - plinth + 3}" x2="{W + 3}" y2="{H - plinth + 3}" stroke="#000" stroke-width="1" stroke-opacity=".35"/>'
+    )
+    frame = (f'<rect width="{post_w}" height="{H}" fill="url(#post)"/>{flute_l}'
+             f'<rect x="{W - post_w}" width="{post_w}" height="{H}" fill="url(#post)"/>{flute_r}'
+             f'{crown_molding}'
+             f'{plinth_base}'
              f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" rx="2" fill="none" stroke="{p["woodLine"]}" stroke-opacity=".5"/>')
     return "".join(clips), "".join(body) + frame, W, H
 
@@ -1319,6 +1373,9 @@ def works_card(theme, d):
             f'<linearGradient id="floor" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="{mix(wood0, "#fff", .1)}"/><stop offset="1" stop-color="{mix(wood1, "#000", .1)}"/></linearGradient>'
             f'<linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{b0}"/><stop offset="1" stop-color="{b1}"/></linearGradient>'
             f'<linearGradient id="under" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'
+            f'<radialGradient id="caseGlow" cx="50%" cy="0%" r="90%"><stop offset="0" stop-color="{glow}" stop-opacity=".36"/>'
+            f'<stop offset=".5" stop-color="{glow}" stop-opacity=".12"/><stop offset="1" stop-color="{glow}" stop-opacity="0"/></radialGradient>'
+            f'<linearGradient id="metal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p.get("metal0", "#8a826c")}"/><stop offset="1" stop-color="{p.get("metal1", "#4a453a")}"/></linearGradient>'
             f'<filter id="wshade" x="-20%" y="-10%" width="140%" height="120%"><feGaussianBlur stdDeviation="5"/></filter></defs>'
             + f'<g clip-path="url(#wcard)">'
             # the tree's light, all across the card: its colours, and soft patches of sun through the leaves
