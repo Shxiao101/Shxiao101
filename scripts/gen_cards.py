@@ -650,7 +650,7 @@ def shelf_card(theme, d):
     k = (X1 - X0 - gap * (len(vols) - 1)) / max(sum(v["w"] for v in vols), 1)
     last_idx = len(vols) - 1
     candidates = [idx for idx in range(len(vols)) if idx != last_idx]
-    num_pulled = min(5, len(candidates))
+    num_pulled = min(3, len(candidates))
     pulled = set(rnd.sample(candidates, num_pulled)) if candidates else set()
     books, shadows, x = [], [], X0
     for i, v in enumerate(vols):
@@ -673,12 +673,12 @@ def shelf_card(theme, d):
         tilt_transform = f' transform="rotate(5 {x + w:.1f} {SHELF_Y})"' if is_leaning else ""
 
         if i in pulled and not is_leaning:   # lifted book with a crimson silk bookmark ribbon
-            dur = rnd.uniform(6.5, 9.0)
+            dur = rnd.uniform(14.0, 18.0)
             beg = -rnd.uniform(0, dur)
             ribbon_dangle = (f'<path d="M{x + w / 2 - 0.8:.1f},{y + h:.1f} Q{x + w / 2 + 2.5:.1f},{y + h + 6:.1f} {x + w / 2 - 1.5:.1f},{y + h + 12:.1f}" '
                              f'fill="none" stroke="{p["ribbon0"]}" stroke-width="1.8" stroke-linecap="round"/>')
             body = (f'<g><animateTransform attributeName="transform" type="translate" values="0 0;0 -18;0 -18;0 0;0 0" '
-                    f'keyTimes="0;.22;.52;.70;1" calcMode="spline" keySplines="{EASE};0 0 1 1;{EASE};0 0 1 1" '
+                    f'keyTimes="0;.10;.32;.42;1" calcMode="spline" keySplines="{EASE};0 0 1 1;{EASE};0 0 1 1" '
                     f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>{body}{ribbon_dangle}</g>')
         elif is_leaning:
             body = f'<g{tilt_transform}>{body}</g>'
