@@ -1110,11 +1110,6 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
               # the jacket's fold round the spine, on the right
               f'<path d="M{cw - 7},0 V{ch}" stroke="#000" stroke-opacity=".08"/><path d="M{cw - 8.2},0 V{ch}" stroke="#fff" stroke-opacity=".2"/>'
               + head_row + title + author)
-    # silk bookmark ribbon dangling from top of book
-    ribbon_col = p.get("ribbon0", "#e0552a")
-    ribbon = (f'<path d="M{cw * .68:.1f},-1 C{cw * .68 - 3:.1f},10 {cw * .68 + 7:.1f},22 {cw * .68 + 3:.1f},34 '
-              f'C{cw * .68 + 1:.1f},42 {cw * .68 - 4:.1f},50 {cw * .68 - 1:.1f},58" '
-              f'fill="none" stroke="{ribbon_col}" stroke-width="2.2" stroke-linecap="round" opacity=".88"/>')
     note = ""
     if (today - v["pushed"]).days <= FRESH_DAYS:   # a note in a shop assistant's hand, taped on: still being written
         note = (f'<g transform="translate({cw - 46} {oy - 22}) rotate(7)">'
@@ -1158,7 +1153,7 @@ def cover(p, i, v, today, shade=0, number=1, band=0):
     about = f"{v['name']}: {v['desc']}" if v["desc"] else v["name"]
     return (f'<clipPath id="wc{i}"><rect width="{cw}" height="{ch}" rx="2"/></clipPath>{fade}',
             f'<title>{esc(about)}</title><g clip-path="url(#wc{i})">{jacket}{obi}<rect width="{cw}" height="{ch}" fill="url(#board)"/>'
-            f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{ribbon}{note}')
+            f'<rect width="{cw}" height="{ch}" fill="#000" opacity="{dim}"/>{glint}</g>{note}')
 
 
 WORKS_W = 1200             # as wide as the other cards
