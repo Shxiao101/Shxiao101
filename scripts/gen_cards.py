@@ -680,14 +680,12 @@ def shelf_card(theme, d):
         is_leaning = (i == last_idx and len(vols) >= 4)
         tilt_transform = f' transform="rotate(5 {x + w:.1f} {SHELF_Y})"' if is_leaning else ""
 
-        if i in pulled and not is_leaning:   # lifted book with a crimson silk bookmark ribbon
+        if i in pulled and not is_leaning:   # lifted book
             dur = rnd.uniform(14.0, 18.0)
             beg = -rnd.uniform(0, dur)
-            ribbon_dangle = (f'<path d="M{x + w / 2 - 0.8:.1f},{y + h:.1f} Q{x + w / 2 + 2.5:.1f},{y + h + 6:.1f} {x + w / 2 - 1.5:.1f},{y + h + 12:.1f}" '
-                             f'fill="none" stroke="{p["ribbon0"]}" stroke-width="1.8" stroke-linecap="round"/>')
             body = (f'<g><animateTransform attributeName="transform" type="translate" values="0 0;0 -18;0 -18;0 0;0 0" '
                     f'keyTimes="0;.10;.32;.42;1" calcMode="spline" keySplines="{EASE};0 0 1 1;{EASE};0 0 1 1" '
-                    f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>{body}{ribbon_dangle}</g>')
+                    f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>{body}</g>')
         elif is_leaning:
             body = f'<g{tilt_transform}>{body}</g>'
 
