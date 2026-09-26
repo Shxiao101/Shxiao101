@@ -451,8 +451,8 @@ def stats_panel(theme, d):
         f'<g transform="translate({x} {y})"><path d="{star_path(r)}" fill="{p["spark"]}">'
         f'<animate attributeName="opacity" values="0.15;1;0.15" dur="{dur}s" begin="{beg}s" repeatCount="indefinite"/></path></g>'
         for x, y, r, dur, beg in [(640, 58, 7, 3.2, 0), (604, 236, 5, 2.7, 1.1), (1150, 430, 8, 3.6, .5), (700, 448, 5, 2.9, 1.8)])
-    # light and shade across the numbers, falling from the upper left — same window as the bookshelf
-    sun_defs, sun = light_rays("sunS", 30, W - 60, H, theme == "dark", from_left=True, seed=9, count=4)
+    # the window light, falling from the upper right across the whole card: the bookshelf below shares this light
+    sun_defs, sun = light_rays("sunS", 30, W - 60, H, theme == "dark", from_left=False, seed=9, count=4)
     today = d["today"]
     updated = f"updated {today.strftime('%b').lower()} {today.day}, {today.year}"
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="github stats of {esc(LOGIN)}">
@@ -589,10 +589,10 @@ def vase(p, cx, base):
         f'<path d="M{cx - 6},{mouth + 20} Q{cx - 2},{mouth + 28} {cx + 2},{mouth + 26} T{cx + 8},{mouth + 38} '
         f'M{cx - 12},{mouth + 32} Q{cx - 6},{mouth + 42} {cx - 1},{mouth + 38} T{cx + 6},{mouth + 46}" '
         f'fill="none" stroke="{p["stem"]}" stroke-opacity=".18" stroke-width=".7" stroke-linecap="round"/>'
-        # Specular glaze highlight (瓷器玉质双层高光弧)
-        f'<path d="M{cx - 8},{mouth + 14} Q{cx - 15},{mouth + 28} {cx - 12},{base - 8}" '
+        # Specular glaze highlight on the window side (瓷器玉质双层高光弧)
+        f'<path d="M{cx + 8},{mouth + 14} Q{cx + 15},{mouth + 28} {cx + 12},{base - 8}" '
         f'fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="2.6" stroke-linecap="round"/>'
-        f'<path d="M{cx - 8},{mouth + 14} Q{cx - 15},{mouth + 28} {cx - 12},{base - 8}" '
+        f'<path d="M{cx + 8},{mouth + 14} Q{cx + 15},{mouth + 28} {cx + 12},{base - 8}" '
         f'fill="none" stroke="#fff" stroke-opacity=".80" stroke-width="1.0" stroke-linecap="round"/>'
         # Porcelain lip rim (卷沿)
         f'<ellipse cx="{cx}" cy="{mouth}" rx="5.8" ry="2.4" fill="url(#vaseG)"/>'
@@ -686,11 +686,11 @@ def shelf_card(theme, d):
         books.append(f'<g><title>{esc(v["name"])}</title>{body}</g>')
         if i in pulled and not is_leaning:
             shadows.append(f'<g><animate attributeName="opacity" values="1;.3;1" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
-                           f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/></g>')
+                           f'<rect x="{x - 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/></g>')
         elif is_leaning:
-            shadows.append(f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"{tilt_transform}/>')
+            shadows.append(f'<rect x="{x - 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"{tilt_transform}/>')
         else:
-            shadows.append(f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/>')
+            shadows.append(f'<rect x="{x - 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/>')
         x += w + gap
     landed = 0.5
     grain = "".join(f'<path d="M44,{SHELF_Y + yy} C{280 + 90 * j},{SHELF_Y + yy - 1.8} {680 - 70 * j},{SHELF_Y + yy + 2.2} {W - 44},{SHELF_Y + yy}" '
@@ -741,11 +741,11 @@ def shelf_card(theme, d):
         lx += 15 + text_width("jbmono", name, 12) + 7 + text_width("jbmono", pct, 12) + 30
     if not vols:
         books = [f'<text x="{W / 2}" y="{SHELF_Y - 60}" text-anchor="middle" class="m" font-size="13" fill="{p["muted"]}">no books on the shelf yet</text>']
-    # Sunlight and ambient light
-    sun_defs, sun = light_rays("sunShelf", 30, W - 60, H, dark, from_left=True, seed=11, count=4)
+    # the same window light as the stats card above: one light falling from the upper right across both cards
+    sun_defs, sun = light_rays("sunShelf", 30, W - 60, H, dark, from_left=False, seed=11, count=4)
     glow_color = "#e4cf5a" if dark else "#f2e173"
     glow_op = ".10" if dark else ".22"
-    ambient = f'<ellipse cx="520" cy="160" rx="340" ry="110" fill="{glow_color}" opacity="{glow_op}" filter="url(#shelfGlow)"/>'
+    ambient = f'<ellipse cx="860" cy="170" rx="340" ry="110" fill="{glow_color}" opacity="{glow_op}" filter="url(#shelfGlow)"/>'
 
     # Contact shadow at the base of the books
     contact_shadow = (
@@ -757,10 +757,10 @@ def shelf_card(theme, d):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="languages of {esc(LOGIN)} as a bookshelf">'
             + card_frame(p, W, H, "S")
             + f'<defs><style><![CDATA[{css}]]></style>{leaf_def("vleaf")}'
-            f'<linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".32"/>'
-            f'<stop offset=".14" stop-color="#000" stop-opacity=".04"/><stop offset=".36" stop-color="#fff" stop-opacity=".15"/>'
-            f'<stop offset=".6" stop-color="#fff" stop-opacity="0"/><stop offset=".86" stop-color="#000" stop-opacity=".12"/>'
-            f'<stop offset="1" stop-color="#000" stop-opacity=".36"/></linearGradient>'
+            f'<linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".36"/>'
+            f'<stop offset=".14" stop-color="#000" stop-opacity=".12"/><stop offset=".4" stop-color="#fff" stop-opacity="0"/>'
+            f'<stop offset=".64" stop-color="#fff" stop-opacity=".15"/><stop offset=".86" stop-color="#000" stop-opacity=".04"/>'
+            f'<stop offset="1" stop-color="#000" stop-opacity=".32"/></linearGradient>'
             f'<linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["wood0"]}"/><stop offset="1" stop-color="{p["wood1"]}"/></linearGradient>'
             f'<linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{p["wallShade"]}" stop-opacity="{p["wallShadeO"]}"/>'
             f'<stop offset="1" stop-color="{p["wallShade"]}" stop-opacity="0"/></linearGradient>'
