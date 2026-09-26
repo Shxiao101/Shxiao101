@@ -19,10 +19,12 @@ import os
 import random
 import re
 import sys
+import time
 import unicodedata
+import urllib.error
 import urllib.request
 
-from common import EASE, FONTS, fontface, smooth_fade, star_path, write_svg
+from common import EASE, FONTS, esc, fontface, smooth_fade, star_path, write_svg
 from maple import LEAF_COLORS, STALK_END, leaf_def
 from paper import punch
 from sunlight import light_rays
@@ -42,8 +44,10 @@ PREFACE = [                      # (icon, text): icons are "cap", "books" or "bl
 PREFACE_NAMES = ["BYR Docs", "Amano Tooko"]   # inked in the accent colour
 # --------------------------------------------------------------------------------------------------
 
-STATS_IMG = base64.b64encode(open(os.path.join(HERE, "stats.jpg"), "rb").read()).decode()
-WORKS_IMG = base64.b64encode(open(os.path.join(HERE, "works.jpg"), "rb").read()).decode()
+with open(os.path.join(HERE, "stats.jpg"), "rb") as fh:
+    STATS_IMG = base64.b64encode(fh.read()).decode()
+with open(os.path.join(HERE, "works.jpg"), "rb") as fh:
+    WORKS_IMG = base64.b64encode(fh.read()).decode()
 
 # pull requests and issues through search, which can be limited to public repositories; user.pullRequests can't
 QUERY = """
@@ -84,7 +88,7 @@ query($login: String!, $after: String) {
 """
 
 
-def gql(query, variables):
+def gql(query, variables, retries=2):
     if not TOKEN:
         sys.exit("GITHUB_TOKEN is not set")
     body = json.dumps({"query": query, "variables": variables}).encode()
@@ -92,29 +96,45 @@ def gql(query, variables):
         "https://api.github.com/graphql", data=body,
         headers={"Authorization": f"bearer {TOKEN}", "Content-Type": "application/json",
                  "User-Agent": "profile-cards"})
-    res = json.load(urllib.request.urlopen(req, timeout=60))
-    if res.get("errors"):
-        sys.exit(json.dumps(res["errors"], indent=2))
-    return res["data"]
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                res = json.load(resp)
+            if res.get("errors"):
+                sys.exit(json.dumps(res["errors"], indent=2))
+            return res["data"]
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            if attempt < retries and e.code in (429, 500, 502, 503, 504):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            sys.exit(f"GitHub GraphQL HTTP {e.code}: {e.reason}\n{err_body}")
+        except urllib.error.URLError as e:
+            if attempt < retries:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            sys.exit(f"Network error connecting to GitHub: {e.reason}")
 
 
 YEARS_QUERY = "query($login: String!) { user(login: $login) { contributionsCollection { contributionYears } } }"
 
 
-def all_days():
+def all_days(chunk_size=5):
     """Every calendar day of every contribution year, as sorted (date, count) pairs."""
     years = gql(YEARS_QUERY, {"login": LOGIN})["user"]["contributionsCollection"]["contributionYears"]
     if not years:
         return []
-    fields = " ".join(
-        f'y{y}: contributionsCollection(from: "{y}-01-01T00:00:00Z", to: "{y}-12-31T23:59:59Z") '
-        "{ contributionCalendar { weeks { contributionDays { date contributionCount } } } }" for y in years)
-    u = gql("query($login: String!) { user(login: $login) { %s } }" % fields, {"login": LOGIN})["user"]
     days = {}
-    for y in years:
-        for w in u[f"y{y}"]["contributionCalendar"]["weeks"]:
-            for day in w["contributionDays"]:
-                days[day["date"]] = day["contributionCount"]
+    for i in range(0, len(years), chunk_size):
+        chunk = years[i:i + chunk_size]
+        fields = " ".join(
+            f'y{y}: contributionsCollection(from: "{y}-01-01T00:00:00Z", to: "{y}-12-31T23:59:59Z") '
+            "{ contributionCalendar { weeks { contributionDays { date contributionCount } } } }" for y in chunk)
+        u = gql("query($login: String!) { user(login: $login) { %s } }" % fields, {"login": LOGIN})["user"]
+        for y in chunk:
+            for w in u[f"y{y}"]["contributionCalendar"]["weeks"]:
+                for day in w["contributionDays"]:
+                    days[day["date"]] = day["contributionCount"]
     return sorted(days.items())
 
 
@@ -279,8 +299,7 @@ def fmt(n):
     return f"{n/1000:.1f}k" if n >= 10000 else f"{n:,}"
 
 
-def esc(s):
-    return html.escape(s, quote=True)
+
 
 
 def text_width(key, text, size, spacing=0.0):
@@ -383,7 +402,7 @@ def stats_panel(theme, d):
     sun_defs, sun = light_rays("sunS", 30, 700, H, theme == "dark", from_left=False, seed=9)
     today = d["today"]
     updated = f"updated {today.strftime('%b').lower()} {today.day}, {today.year}"
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="github stats of {LOGIN}">
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="github stats of {esc(LOGIN)}">
 <defs><style><![CDATA[{CSS}]]></style>
 <clipPath id="pcard"><rect width="{W}" height="{H}" rx="28" ry="28"/></clipPath>
 <linearGradient id="pbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{p['pbg0']}"/><stop offset=".55" stop-color="{p['pbg1']}"/><stop offset="1" stop-color="{p['pbg2']}"/></linearGradient>
@@ -392,7 +411,7 @@ def stats_panel(theme, d):
 <linearGradient id="pline" gradientUnits="userSpaceOnUse" x1="56" y1="0" x2="636" y2="0"><stop offset="0" stop-color="{p['accent']}" stop-opacity=".7"/><stop offset="1" stop-color="{p['accent']}" stop-opacity="0"/></linearGradient>
 <linearGradient id="pfade" gradientUnits="userSpaceOnUse" x1="{ix}" y1="0" x2="{ix+230}" y2="0">{smooth_fade(fade_in=True)}</linearGradient>
 <mask id="pmask"><rect x="{ix}" y="0" width="{IW}" height="{H}" fill="url(#pfade)"/></mask>
-<filter id="pblur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
+<filter id="pblur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="45"/></filter>
 <filter id="pglow" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="14"/></filter>
 <filter id="ptint" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="table" tableValues="{p['toneR']}"/><feFuncG type="table" tableValues="{p['toneG']}"/><feFuncB type="table" tableValues="{p['toneB']}"/></feComponentTransfer></filter>
 <filter id="pgrain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
@@ -493,13 +512,18 @@ def shelf_card(theme, d):
     rnd = random.Random(7)
     langs = d["langs"]
     N, X0, X1 = 34, 60, 1046
+    if len(langs) > N:
+        langs = langs[:N]
     raw = [s * N for _, s, _ in langs]
     counts = [max(1, int(r)) for r in raw]
     while langs and sum(counts) < N:          # largest remainder
         i = max(range(len(raw)), key=lambda i: raw[i] - counts[i])
         counts[i] += 1
     while sum(counts) > N:
-        i = max((i for i in range(len(raw)) if counts[i] > 1), key=lambda i: counts[i] - raw[i])
+        candidates = [i for i in range(len(raw)) if counts[i] > 1]
+        if not candidates:
+            break
+        i = max(candidates, key=lambda i: counts[i] - raw[i])
         counts[i] -= 1
     vols = []
     for si, ((name, _, color), n) in enumerate(zip(langs, counts)):
@@ -562,7 +586,7 @@ def shelf_card(theme, d):
            ".bk{animation:drop .65s cubic-bezier(.3,.7,.4,1) both}"
            "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}")
     note = f"{len(langs)} languages · {d['repos']} public repos · by size of code"
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="languages of {LOGIN} as a bookshelf">'
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="languages of {esc(LOGIN)} as a bookshelf">'
             + card_frame(p, W, H, "S")
             + f'<defs><style><![CDATA[{css}]]></style>{leaf_def("vleaf")}'
             f'<linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".32"/>'
@@ -1076,7 +1100,10 @@ def works_card(theme, d):
         beg, s, spin = -rnd.uniform(0, dur), rnd.uniform(1.6, 2.6), rnd.uniform(0, 360)
         petals.append(f'<g opacity="{rnd.uniform(.55, .85):.2f}"><animateTransform attributeName="transform" type="translate" '
                       f'values="{x0:.0f} -20;{x0 + W * .22:.0f} {H * .5:.0f};{x0 + W * .45:.0f} {H + 20}" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
-                      f'<path d="{BLOSSOM_PETAL}" transform="scale({s:.2f})" fill="#fffaf0" filter="url(#petalShade)">'
+                      f'<path d="{BLOSSOM_PETAL}" transform="translate(1 2) scale({s:.2f})" fill="#6b4a1a" opacity=".25">'
+                      f'<animateTransform attributeName="transform" type="rotate" values="{spin:.0f};{spin + 220:.0f};{spin + 360:.0f}" additive="sum" '
+                      f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></path>'
+                      f'<path d="{BLOSSOM_PETAL}" transform="scale({s:.2f})" fill="#fffaf0">'
                       f'<animateTransform attributeName="transform" type="rotate" values="{spin:.0f};{spin + 220:.0f};{spin + 360:.0f}" additive="sum" '
                       f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></path></g>')
     css = (fontface("caveat") + ".h{font-family:'Caveat',cursive;font-weight:600}"
@@ -1096,7 +1123,7 @@ def works_card(theme, d):
             f'<clipPath id="wcard"><rect width="{W}" height="{H}" rx="16"/></clipPath>'
             f'<linearGradient id="wbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{gold[0]}"/>'
             f'<stop offset=".5" stop-color="{gold[1]}"/><stop offset="1" stop-color="{gold[2]}"/></linearGradient>'
-            f'<filter id="wglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="60"/></filter>'
+            f'<filter id="wglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="45"/></filter>'
             f'<filter id="dapple" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>'
             f'<linearGradient id="haze" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{glow}" stop-opacity=".55"/>'
             f'<stop offset="1" stop-color="{glow}" stop-opacity="0"/></linearGradient>{sun_defs}'
@@ -1104,7 +1131,7 @@ def works_card(theme, d):
             f'<mask id="wmask"><rect width="{IW}" height="{H}" fill="url(#wfade)"/></mask>'
             f'<filter id="wtint" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR type="table" tableValues="{p["toneR"]}"/>'
             f'<feFuncG type="table" tableValues="{p["toneG"]}"/><feFuncB type="table" tableValues="{p["toneB"]}"/></feComponentTransfer></filter>'
-            f'<filter id="petalShade" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="1" dy="2" stdDeviation="1.2" flood-color="#6b4a1a" flood-opacity=".25"/></filter>'
+
             f'<filter id="caseShade" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur stdDeviation="9"/></filter>'
             f'<linearGradient id="board" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".12"/>'
             f'<stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".14"/></linearGradient>'
@@ -1150,7 +1177,7 @@ def snake_card(theme, raw, d):
     css = (fontface("outfit") + fontface("jbmono") +
            ".t{font-family:'Outfit',sans-serif;font-weight:800}"
            ".m{font-family:'JetBrains Mono',monospace;font-weight:500}")
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="contribution snake of {LOGIN}">'
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="contribution snake of {esc(LOGIN)}">'
             f'<defs><style><![CDATA[{css}]]></style>'
             f'<linearGradient id="bgN" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{p["bg0"]}"/><stop offset="1" stop-color="{p["bg1"]}"/></linearGradient>'
             f'<linearGradient id="tgN" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["grad0"]}"/><stop offset="1" stop-color="{p["grad1"]}"/></linearGradient>'
@@ -1169,7 +1196,8 @@ def wrap_snake(d):
         if not os.path.exists(path):
             print(f"no {path} (Platane/snk runs first in Actions); contributions card skipped")
             continue
-        raw = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as fh:
+            raw = fh.read()
         if 'aria-label="contribution snake of' in raw:
             continue
         write_svg(path, punch(snake_card(theme, raw, d), theme == "dark"))

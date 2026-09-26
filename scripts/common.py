@@ -1,11 +1,13 @@
 """Pieces shared by gen_hero.py and gen_cards.py: the embedded fonts, the four-point sparkle, the smoothstep fade
 and the easing curve.  Standard library only.
 """
+import html
 import json
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FONTS = json.load(open(os.path.join(HERE, "fonts.json"), encoding="utf-8"))
+with open(os.path.join(HERE, "fonts.json"), encoding="utf-8") as fh:
+    FONTS = json.load(fh)
 
 EASE = ".45 0 .55 1"          # one keySplines segment; join it with ";" once per interval of the animation
 
@@ -37,3 +39,7 @@ def write_svg(path, svg):
     """LF line endings on every platform, so a run on Windows matches the one in CI."""
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(svg)
+
+
+def esc(s):
+    return html.escape(str(s), quote=True)

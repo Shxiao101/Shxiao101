@@ -40,7 +40,7 @@ def main(src_dir="."):
         crop = ImageEnhance.Contrast(crop).enhance(1.06)
         out = crop.resize(size, Image.LANCZOS)
         path = os.path.join(HERE, f"{name}.jpg")
-        out.save(path, "JPEG", quality=84, optimize=True, subsampling=1)
+        out.save(path, "JPEG", quality=80, optimize=True, subsampling=2)
         print(f"{path}: {os.path.getsize(path)//1024} KB")
 
 

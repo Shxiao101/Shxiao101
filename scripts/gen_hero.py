@@ -8,7 +8,7 @@ Fonts come from scripts/fonts.json (Google Fonts subsets), the art from scripts/
 import base64, io, math, os, random
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
-from common import EASE, FONTS as fonts, fontface, smooth_fade, star_path as star, write_svg
+from common import EASE, FONTS as fonts, esc, fontface, smooth_fade, star_path as star, write_svg
 from maple import LEAF_COLORS, leaf_def
 from paper import punch
 from sunlight import halo
@@ -24,8 +24,10 @@ FOOT_SUB = "Shxiao  ·  Amano Tooko"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(HERE), "assets")
-hero_b64 = base64.b64encode(open(os.path.join(HERE, "hero.jpg"), "rb").read()).decode()
-foot_b64 = base64.b64encode(open(os.path.join(HERE, "footer.jpg"), "rb").read()).decode()
+with open(os.path.join(HERE, "hero.jpg"), "rb") as fh:
+    hero_b64 = base64.b64encode(fh.read()).decode()
+with open(os.path.join(HERE, "footer.jpg"), "rb") as fh:
+    foot_b64 = base64.b64encode(fh.read()).decode()
 
 _ttf = {}
 def ttf(key):
@@ -93,7 +95,7 @@ BASE_CSS = """
 GRAIN = ('<filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" '
          'baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>')
 
-def dust(p, w, h, seed=7, n=26):
+def dust(p, w, h, seed=7, n=18):
     """Motes drifting up and sideways through the window light: a few soft blurred ones, many small sharp ones."""
     rnd = random.Random(seed)
     soft, sharp = [], []
@@ -104,7 +106,7 @@ def dust(p, w, h, seed=7, n=26):
         anim = (f'<animateTransform attributeName="transform" type="translate" values="0 0;{dx:.0f} {dy:.0f};0 0" '
                 f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>')
         if i % 3 == 0:
-            r = rnd.uniform(6, 20); o = rnd.uniform(0.12, 0.40) * float(p["dustO"])
+            r = rnd.uniform(5, 14); o = rnd.uniform(0.12, 0.40) * float(p["dustO"])
             soft.append(f'<circle cx="{cx:.0f}" cy="{cy:.0f}" r="{r:.1f}" opacity="{o:.2f}">{anim}</circle>')
         else:
             r = rnd.uniform(1.0, 2.6); o = rnd.uniform(0.35, 0.85) * float(p["dustO"])
@@ -218,7 +220,7 @@ def hero(theme):
         raise SystemExit(f"TAGLINE is too wide for the banner ({width('caveat', TAGLINE, TAG_SIZE):.0f}px)")
     if cursor_x + 7 > W - 52:
         raise SystemExit(f"NAME is too wide for the banner ({name_w:.0f}px)")
-    label = f"{NAME} — {TAGLINE}"
+    label = esc(f"{NAME} — {TAGLINE}")
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{label}">
 <title>{label}</title>
 <defs>
@@ -238,8 +240,8 @@ def hero(theme):
 </linearGradient>
 <mask id="mV"><rect x="0" y="0" width="{IMG_W}" height="{H}" fill="url(#fadeV)"/></mask>
 <mask id="mImg"><g mask="url(#mV)"><rect x="0" y="0" width="{IMG_W}" height="{H}" fill="url(#fadeH)"/></g></mask>
-<filter id="blur70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
-<filter id="blur9" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="blur70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="45"/></filter>
+<filter id="blur9" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4.5"/></filter>
 <filter id="blur18" x="-60%" y="-30%" width="220%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
 <filter id="tint" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="{p['imgTint']}"/></filter>
 {GRAIN}
@@ -290,7 +292,7 @@ def leaves(w, h, seed=21):
     """Maple leaves drifting down: each one falls, sways side to side, rocks with the sway and flips over.
     Three depths - small faint far leaves, mid leaves, and a few big soft-focus ones up close."""
     rnd = random.Random(seed)
-    layers = ["far"] * 5 + ["mid"] * 9 + ["near"] * 3
+    layers = ["far"] * 3 + ["mid"] * 7 + ["near"] * 2
     rnd.shuffle(layers)
     out = []
     for i, layer in enumerate(layers):
@@ -375,8 +377,9 @@ def footer(theme):
     # printed over the tooth, so it stays sharp and the paper only shows through where it fades out
     toothO, mottle, mottleO = (".22", "#000", ".14") if dark else (".16", "#b08a4a", ".07")
     edge, edgeO, dropO = ("#fff3c4", ".14", ".6") if dark else ("#bfae7c", ".7", ".22")
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {FW} {FH}" width="{FW}" height="{FH}" role="img" aria-label="{FOOT_LINE}">
-<title>{FOOT_LINE}</title>
+    foot_label = esc(FOOT_LINE)
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {FW} {FH}" width="{FW}" height="{FH}" role="img" aria-label="{foot_label}">
+<title>{foot_label}</title>
 <defs>
 <style><![CDATA[{css}]]></style>
 <clipPath id="fcard"><path d="{outline}"/></clipPath>
@@ -385,7 +388,7 @@ def footer(theme):
 {FADE_OUT}
 </linearGradient>
 <mask id="fmask"><rect x="0" y="0" width="{IW}" height="{FH}" fill="url(#ffade)"/></mask>
-<filter id="blur70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
+<filter id="blur70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="45"/></filter>
 <filter id="leafBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter>
 <filter id="fibre" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation=".7"/></filter>
 <filter id="drop" x="-5%" y="-10%" width="110%" height="130%"><feGaussianBlur stdDeviation="3.5"/></filter>

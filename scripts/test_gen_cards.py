@@ -143,13 +143,40 @@ class CardTests(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(raw)
             gen_cards.wrap_snake({"active_days": 42})
-            framed = open(path, encoding="utf-8").read()
+            with open(path, encoding="utf-8") as fh:
+                framed = fh.read()
             gen_cards.wrap_snake({"active_days": 42})
-            self.assertEqual(open(path, encoding="utf-8").read(), framed)
+            with open(path, encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), framed)
             self.assertFalse(os.path.exists(os.path.join(out, "snake-light.svg")))
         ET.fromstring(framed)
         self.assertIn(">contributions<", framed)
         self.assertIn("42 active days · last 12 months", framed)
+
+    def test_shelf_many_languages(self):
+        """shelf_card handles more than 34 languages without crashing on empty candidates."""
+        langs = [(f"L{i}", 1 / 40, None) for i in range(40)]
+        d = {"langs": langs, "repos": 40}
+        for theme in ("dark", "light"):
+            svg = gen_cards.shelf_card(theme, d)
+            ET.fromstring(svg)
+
+    def test_all_days_chunking(self):
+        """all_days chunks multi-year queries into batches of at most chunk_size."""
+        queried = []
+        def mock_gql(query, variables):
+            if query is gen_cards.YEARS_QUERY:
+                return {"user": {"contributionsCollection": {"contributionYears": [2024, 2025, 2026]}}}
+            queried.append(query)
+            user = {}
+            for y in [2024, 2025, 2026]:
+                if f"y{y}:" in query:
+                    user[f"y{y}"] = {"contributionCalendar": {"weeks": [{"contributionDays": [{"date": f"{y}-01-01", "contributionCount": 1}]}]}}
+            return {"user": user}
+        with mock.patch.object(gen_cards, "gql", mock_gql):
+            days = gen_cards.all_days(chunk_size=2)
+        self.assertEqual(len(queried), 2)
+        self.assertEqual(len(days), 3)
 
 
 class StreakTests(unittest.TestCase):
