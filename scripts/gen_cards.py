@@ -409,10 +409,16 @@ def date_span(a, b):
     return f(a) if a == b else f"{f(a)} - {f(b)}"
 
 
+# the stats panel and the bookshelf stand one above the other in the profile and are lit by one window: its shafts
+# are drawn across the pair, so a single band runs on down over the seam between them rather than stopping at it
+STATS_H, SHELF_H = 480, 336
+PAIR_H = STATS_H + SHELF_H
+
+
 def stats_panel(theme, d):
     """Stats on the left, the window illustration (scripts/stats.jpg) fading in on the right."""
     p = PAL[theme]
-    W, H = 1200, 480
+    W, H = 1200, STATS_H
     IW = 524                      # stats.jpg is 1048x960 -> 524x480
     ix = W - IW
     s = d["streak"]
@@ -451,8 +457,10 @@ def stats_panel(theme, d):
         f'<g transform="translate({x} {y})"><path d="{star_path(r)}" fill="{p["spark"]}">'
         f'<animate attributeName="opacity" values="0.15;1;0.15" dur="{dur}s" begin="{beg}s" repeatCount="indefinite"/></path></g>'
         for x, y, r, dur, beg in [(640, 58, 7, 3.2, 0), (604, 236, 5, 2.7, 1.1), (1150, 430, 8, 3.6, .5), (700, 448, 5, 2.9, 1.8)])
-    # the window light, falling from the upper right across the whole card: the bookshelf below shares this light
-    sun_defs, sun = light_rays("sunS", 30, W - 60, H, theme == "dark", from_left=False, seed=9, count=4)
+    # the window light, falling from the upper right: the bookshelf below shares these shafts, so each band is the
+    # top slice of one long shaft that carries on over the seam (see PAIR_H)
+    sun_defs, sun = light_rays("sunS", 30, W - 60, H, theme == "dark", from_left=False, seed=9, count=4,
+                               span=PAIR_H, y0=0)
     today = d["today"]
     updated = f"updated {today.strftime('%b').lower()} {today.day}, {today.year}"
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="github stats of {esc(LOGIN)}">
@@ -616,7 +624,7 @@ def shelf_card(theme, d):
     """Languages as a shelf of books: each language is a run of matching volumes, as many as its share of the code
     (one at least), titled on the first spine.  A bookend and a vase of maple close the row."""
     p = PAL[theme]
-    W, H = 1200, 336
+    W, H = 1200, SHELF_H
     dark = theme == "dark"
     rnd = random.Random(7)
 
@@ -741,8 +749,10 @@ def shelf_card(theme, d):
         lx += 15 + text_width("jbmono", name, 12) + 7 + text_width("jbmono", pct, 12) + 30
     if not vols:
         books = [f'<text x="{W / 2}" y="{SHELF_Y - 60}" text-anchor="middle" class="m" font-size="13" fill="{p["muted"]}">no books on the shelf yet</text>']
-    # the same window light as the stats card above: one light falling from the upper right across both cards
-    sun_defs, sun = light_rays("sunShelf", 30, W - 60, H, dark, from_left=False, seed=11, count=4)
+    # the same window as the stats card above: the same shafts, drawn on down across this card, so the light reads
+    # as one band running over the seam; `clip` keeps a shaft off the card's rounded corners
+    sun_defs, sun = light_rays("sunShelf", 30, W - 60, H, dark, from_left=False, seed=9, count=4,
+                               span=PAIR_H, y0=STATS_H, clip="sunS")
     glow_color = "#e4cf5a" if dark else "#f2e173"
     glow_op = ".10" if dark else ".22"
     ambient = f'<ellipse cx="860" cy="170" rx="340" ry="110" fill="{glow_color}" opacity="{glow_op}" filter="url(#shelfGlow)"/>'
@@ -768,6 +778,7 @@ def shelf_card(theme, d):
             f'<linearGradient id="vaseG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["vase0"]}"/><stop offset=".4" stop-color="{p["vase0"]}"/>'
             f'<stop offset="1" stop-color="{p["vase1"]}"/></linearGradient>'
            f'<filter id="bshade" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="3"/></filter>'
+           f'<clipPath id="sunS"><rect x="0.75" y="0.75" width="{W - 1.5}" height="{H - 1.5}" rx="16"/></clipPath>'
            f'<filter id="shelfGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="45"/></filter>{sun_defs}</defs>'
            + ambient
            + f'<g transform="translate(58 34)" fill="{p["accent"]}">{ICON["star"]}</g>'

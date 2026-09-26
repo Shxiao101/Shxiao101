@@ -1,8 +1,9 @@
 """Animated light for the cards: drifting shafts of light and shade (light_rays) or breathing halos (halo).
 
-Shafts: wide, blurred bands within a card all lean the same way and drift the same way, so nothing crosses.  On the
-dark theme light shafts alternate with shade bands for a clear light/dark contrast; each band fades in, glides
-sideways and fades out again, staggered so the pattern keeps shifting.
+Shafts: wide, blurred bands within a card all lean the same way and drift the same way, so nothing crosses.  Two
+cards stacked one above the other can share one set of shafts, so a single band runs on down over the seam between
+them.  On the dark theme light shafts alternate with shade bands for a clear light/dark contrast; each band fades in,
+glides sideways and fades out again, staggered so the pattern keeps shifting.
 Halos: soft radial glows with a faint ring that slowly swell, dim and drift.
 Dark theme: screen-blended warm glow (black shade bands).  Light theme: light only, a pale warm white laid over the
 paper that brightens it; no multiply and no shade, which read as stains and shadows on the light background.
@@ -15,11 +16,17 @@ DRIFT = 90         # px each band glides, in the light's direction, over its lif
 LIFE = (22, 32)    # s per band: fade in, glide, fade out — slow enough to read as drifting sunlight
 
 
-def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
+def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4, span=None, y0=0, clip=None):
     """Defs and body.  `count` light shafts spread over x_from..x_to (at mid-height), plus a shade band in each gap
     on the dark theme.
     from_left: light falls from the upper left to the lower right and drifts right; False mirrors both.
+    Cards stacked one above the other can share one set of shafts: give both calls the same `seed`, `count` and x
+    range, pass the height of the whole stack as `span` and this card's offset in it as `y0`, and each shaft is drawn
+    as this card's slice of one long band, so it reads as a single shaft running on down over the seam.  The default
+    (span=h, y0=0) keeps the light inside one card.
+    `clip`: a clipPath id, so a band reaching a card's rounded corner cannot spill past it.
     `uid` keeps ids unique in the document."""
+    span = h if span is None else span
     sign = 1 if from_left else -1
     rnd = random.Random(seed)
     if dark:
@@ -43,10 +50,10 @@ def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
         dur = rnd.uniform(*LIFE)
         begin = -rnd.uniform(0, dur)
         travel = sign * DRIFT * rnd.uniform(.8, 1.2)
-        return (f'<g transform="translate({x:.0f} {h / 2:.0f})"><g opacity="0">'
+        return (f'<g transform="translate({x:.0f} {span / 2 - y0:.0f})"><g opacity="0">'
                 f'<animate attributeName="opacity" values="0;{peak:.2f};{peak:.2f};0" keyTimes="0;.3;.7;1" dur="{dur:.1f}s" begin="{begin:.1f}s" repeatCount="indefinite"/>'
                 f'<animateTransform attributeName="transform" type="translate" values="{-travel / 2:.0f} 0;{travel / 2:.0f} 0" dur="{dur:.1f}s" begin="{begin:.1f}s" repeatCount="indefinite"/>'
-                f'<rect x="{-w / 2:.1f}" y="{-h / 2 - 40:.0f}" width="{w:.1f}" height="{h + 80:.0f}" transform="skewX({sign * SKEW})" '
+                f'<rect x="{-w / 2:.1f}" y="{-span / 2 - 40:.0f}" width="{w:.1f}" height="{span + 80:.0f}" transform="skewX({sign * SKEW})" '
                 f'fill="url(#{uid}{grad})" filter="url(#{uid}Soft)"/></g></g>')
 
     step = (x_to - x_from) / count
@@ -56,8 +63,9 @@ def light_rays(uid, x_from, x_to, h, dark, from_left=True, seed=1, count=4):
         lights.append(band(x, rnd.uniform(80, 150), rnd.uniform(*light_peak), "Light"))
         if shade:
             shades.append(band(x + step / 2, rnd.uniform(90, 170), rnd.uniform(*shade_peak), "Shade"))
-    shade_layer = f'<g style="mix-blend-mode:multiply">{"".join(shades)}</g>' if shades else ""
-    return defs, shade_layer + f'<g style="mix-blend-mode:{light_blend}">{"".join(lights)}</g>'
+    clip_attr = f' clip-path="url(#{clip})"' if clip else ""
+    shade_layer = f'<g{clip_attr} style="mix-blend-mode:multiply">{"".join(shades)}</g>' if shades else ""
+    return defs, shade_layer + f'<g{clip_attr} style="mix-blend-mode:{light_blend}">{"".join(lights)}</g>'
 
 
 def halo(uid, glows, dark):
