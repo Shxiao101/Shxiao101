@@ -437,12 +437,18 @@ def stats_panel(theme, d):
 
 
 SHELF_Y = 258          # top of the shelf board, where the books stand
+ROMAN_NUMS = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+              "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"]
 
 
-def spine_trim(style, x, y, w, foil, ornament):
-    """Gilt work on a spine, the foot a mirror image of the head; every volume of one language shares a style,
-    like a set.  The front of the shelf board hides the bottom 4px of each book, so the foot is measured from
-    what shows."""
+def roman(n):
+    return ROMAN_NUMS[n] if 0 < n < len(ROMAN_NUMS) else str(n)
+
+
+def spine_trim(style, x, y, w, foil, ornament, vol_idx=0):
+    """Gilt work and raised bands on a spine, the foot a mirror image of the head; every volume of one language
+    shares a style, like a set.  The front of the shelf board hides the bottom 4px of each book, so the foot is
+    measured from what shows."""
     head, foot = y, SHELF_Y - 4
 
     def mirrored(d, hh, piece):   # `piece(top_y)` d px in from the head, and again d px in from the foot
@@ -451,16 +457,43 @@ def spine_trim(style, x, y, w, foil, ornament):
     def rule(d, hh=1.4, o=.85):
         return mirrored(d, hh, lambda yy: f'<rect x="{x + 2.5:.1f}" y="{yy:.1f}" width="{w - 5:.1f}" height="{hh}" fill="{foil}" opacity="{o}"/>')
 
-    # a small gilt lozenge mid-spine where there's no title
-    lozenge = (f'<rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="translate({x + w / 2:.1f} {(head + foot) / 2:.1f}) rotate(45)" '
-               f'fill="{foil}" opacity=".7"/>' if ornament else "")
-    if style == 0:        # double gilt rules
-        return rule(11) + rule(15.5) + lozenge
-    if style == 1:        # dark leather bands edged in gilt
-        band = mirrored(9, 13, lambda yy: f'<rect x="{x:.1f}" y="{yy:.1f}" width="{w:.1f}" height="13" fill="#000" opacity=".24"/>')
-        return band + rule(7.4, 1.2, .8) + rule(22.4, 1.2, .8) + lozenge
-    return rule(12, 2.4) + lozenge   # one broad gilt rule
+    # 4 raised bands (bamboo ribs / sewing cords) across the spine
+    span = foot - head
+    bands = []
+    for frac in (0.22, 0.41, 0.61, 0.80):
+        by = head + span * frac
+        bands.append(
+            f'<rect x="{x:.1f}" y="{by:.1f}" width="{w:.1f}" height="1" fill="#fff" opacity=".18"/>'
+            f'<rect x="{x:.1f}" y="{by + 1:.1f}" width="{w:.1f}" height="2" fill="#000" opacity=".22"/>'
+            f'<rect x="{x:.1f}" y="{by + 3:.1f}" width="{w:.1f}" height="1" fill="#000" opacity=".35"/>'
+        )
+    ribs = "".join(bands)
 
+    mid_y = (head + foot) / 2
+    if vol_idx > 0 and w >= 16:
+        # Classical Roman volume numbering for multi-volume collection
+        num_str = roman(vol_idx + 1)
+        font_sz = min(9.5, max(7.0, w * 0.42))
+        vol_label = (
+            f'<rect x="-2" y="-2" width="4" height="4" transform="translate({x + w / 2:.1f} {mid_y - font_sz - 4:.1f}) rotate(45)" fill="{foil}" opacity=".6"/>'
+            f'<text x="{x + w / 2:.1f}" y="{mid_y + font_sz * 0.35:.1f}" text-anchor="middle" class="m" font-size="{font_sz:.1f}" '
+            f'font-weight="700" letter-spacing="0.5" fill="{foil}" opacity=".9">{num_str}</text>'
+            f'<rect x="-2" y="-2" width="4" height="4" transform="translate({x + w / 2:.1f} {mid_y + font_sz + 4:.1f}) rotate(45)" fill="{foil}" opacity=".6"/>'
+        )
+    elif ornament:
+        vol_label = (f'<rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="translate({x + w / 2:.1f} {mid_y:.1f}) rotate(45)" '
+                     f'fill="{foil}" opacity=".7"/>')
+    else:
+        vol_label = ""
+
+    if style == 0:        # double gilt rules
+        trim = rule(11) + rule(15.5) + vol_label
+    elif style == 1:      # dark leather bands edged in gilt
+        band = mirrored(9, 13, lambda yy: f'<rect x="{x:.1f}" y="{yy:.1f}" width="{w:.1f}" height="13" fill="#000" opacity=".24"/>')
+        trim = band + rule(7.4, 1.2, .8) + rule(22.4, 1.2, .8) + vol_label
+    else:
+        trim = rule(12, 2.4) + vol_label   # one broad gilt rule
+    return ribs + trim
 
 def vase(p, cx, base):
     """A celadon bud vase with a sprig of maple that sways a little, and now and then drops a leaf on the shelf."""
@@ -486,11 +519,31 @@ def vase(p, cx, base):
              f'keySplines="{EASE};{EASE}" dur="7s" repeatCount="indefinite"/>'
              f'<g fill="none" stroke="{p["stem"]}" stroke-width="1.6" stroke-linecap="round">{stems}</g>'
              f'{"".join(leaves)}</g></g>')
-    body = (f'<g transform="translate({cx} {base})">'
-            f'<ellipse cx="5" cy="0" rx="22" ry="3" fill="#000" opacity=".2"/>'
-            f'<path d="M-13,0 C-24,-6 -25,-30 -12,-40 C-8,-44 -7,-48 -8,-54 L8,-54 C7,-48 8,-44 12,-40 C25,-30 24,-6 13,0 Z" fill="url(#vaseG)"/>'
-            f'<ellipse cx="0" cy="-54" rx="8.5" ry="2.2" fill="{p["vase1"]}"/>'
-            f'<path d="M-15,-31 C-17,-21 -15,-11 -10,-5" fill="none" stroke="#fff" stroke-opacity=".38" stroke-width="2.4" stroke-linecap="round"/></g>')
+    body = (
+        # Wooden footed stand ring
+        f'<ellipse cx="{cx}" cy="{base + 1}" rx="14" ry="3.5" fill="{p["wood1"]}"/>'
+        f'<ellipse cx="{cx}" cy="{base}" rx="13" ry="3" fill="url(#wood)"/>'
+        # Drop shadow onto shelf
+        f'<ellipse cx="{cx}" cy="{base + 2}" rx="15" ry="3.8" fill="#000" opacity="{p["wallShadeO"]}" filter="url(#bshade)"/>'
+        # Vase porcelain body
+        f'<path d="M{cx - 5},{mouth} Q{cx - 6},{mouth + 8} {cx - 15},{mouth + 28} '
+        f'Q{cx - 20},{mouth + 44} {cx - 16},{base - 4} Q{cx - 15},{base} {cx},{base} '
+        f'Q{cx + 15},{base} {cx + 16},{base - 4} Q{cx + 20},{mouth + 44} {cx + 15},{mouth + 28} '
+        f'Q{cx + 6},{mouth + 8} {cx + 5},{mouth} Z" fill="url(#vaseG)"/>'
+        # Delicate celadon crackle glaze veins (冰裂开片纹)
+        f'<path d="M{cx - 6},{mouth + 20} Q{cx - 2},{mouth + 28} {cx + 2},{mouth + 26} T{cx + 8},{mouth + 38} '
+        f'M{cx - 12},{mouth + 32} Q{cx - 6},{mouth + 42} {cx - 1},{mouth + 38} T{cx + 6},{mouth + 46}" '
+        f'fill="none" stroke="{p["stem"]}" stroke-opacity=".18" stroke-width=".7" stroke-linecap="round"/>'
+        # Specular glaze highlight (瓷器玉质双层高光弧)
+        f'<path d="M{cx - 8},{mouth + 14} Q{cx - 15},{mouth + 28} {cx - 12},{base - 8}" '
+        f'fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="2.6" stroke-linecap="round"/>'
+        f'<path d="M{cx - 8},{mouth + 14} Q{cx - 15},{mouth + 28} {cx - 12},{base - 8}" '
+        f'fill="none" stroke="#fff" stroke-opacity=".80" stroke-width="1.0" stroke-linecap="round"/>'
+        # Porcelain lip rim (卷沿)
+        f'<ellipse cx="{cx}" cy="{mouth}" rx="5.8" ry="2.4" fill="url(#vaseG)"/>'
+        f'<ellipse cx="{cx}" cy="{mouth}" rx="4.8" ry="1.8" fill="{p["vase1"]}"/>'
+        f'<ellipse cx="{cx}" cy="{mouth - 0.4}" rx="5.2" ry="1.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width=".8"/>'
+    )
     # the falling leaf: lets go of the sprig, flutters down, lies on the board a moment and fades
     kt = "0;.1;.2;.3;.4;1"
     spl = f'keyTimes="{kt}" calcMode="spline" keySplines="{";".join([EASE] * 5)}" dur="18s" begin="6s" repeatCount="indefinite"'
@@ -509,7 +562,13 @@ def shelf_card(theme, d):
     (one at least), titled on the first spine.  A bookend and a vase of maple close the row."""
     p = PAL[theme]
     W, H = 1200, 336
+    dark = theme == "dark"
     rnd = random.Random(7)
+    # Language-specific iconic cloth colors: ensure adjacent Python and TypeScript are distinctly identifiable
+    LANG_CLOTH = {
+        "python": "#e5a823",      # Iconic Python Gold / Amber
+        "typescript": "#2f74c0",  # Microsoft TypeScript Royal Blue
+    }
     langs = d["langs"]
     N, X0, X1 = 34, 60, 1046
     if len(langs) > N:
@@ -527,16 +586,20 @@ def shelf_card(theme, d):
         counts[i] -= 1
     vols = []
     for si, ((name, _, color), n) in enumerate(zip(langs, counts)):
-        cloth = mix(color or p["langs"][si % len(p["langs"])], "#6b4a2b", .28)   # dyed book cloth, not screen colour
+        base_color = LANG_CLOTH.get(name.lower(), color or p["langs"][si % len(p["langs"])])
+        cloth = mix(base_color, "#6b4a2b", .14)   # dyed book cloth, keeping hue rich and distinct
         cloth = mix(cloth, "#000", float(p["clothDim"]))
         bw, bh = rnd.uniform(24, 31), rnd.uniform(146, 172)
         for k in range(n):   # a set, but no two volumes quite alike: worn, faded, a little taller or thinner
-            vols.append({"si": si, "name": name, "first": k == 0, "w": bw * rnd.uniform(.84, 1.16),
+            vols.append({"si": si, "name": name, "first": k == 0, "idx": k, "w": bw * rnd.uniform(.84, 1.16),
                          "h": min(184, bh + rnd.uniform(-10, 10)), "cloth": cloth,
                          "c": mix(cloth, rnd.choice(("#000", "#fff")), rnd.uniform(0, .11))})
     gap = 1.2
     k = (X1 - X0 - gap * (len(vols) - 1)) / max(sum(v["w"] for v in vols), 1)
-    pulled = set(rnd.sample(range(len(vols)), min(3, len(vols))))
+    last_idx = len(vols) - 1
+    candidates = [idx for idx in range(len(vols)) if idx != last_idx]
+    num_pulled = min(5, len(candidates))
+    pulled = set(rnd.sample(candidates, num_pulled)) if candidates else set()
     books, shadows, x = [], [], X0
     for i, v in enumerate(vols):
         w, h = v["w"] * k, v["h"]
@@ -550,26 +613,70 @@ def shelf_card(theme, d):
             title = (f'<text transform="translate({x + w / 2 - size * .36:.1f} {y + 32:.1f}) rotate(90)" class="t" font-size="{size:.1f}" '
                      f'letter-spacing="{size * .055:.2f}" fill="{foil}">{esc(v["name"])}</text>')
         body = (f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2" fill="{v["c"]}"/>'
-                + spine_trim(v["si"] % 3, x, y, w, foil, not title) + title
+                + spine_trim(v["si"] % 3, x, y, w, foil, not title, vol_idx=v["idx"]) + title
                 + f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="2" fill="url(#spine)"/>')
-        if i in pulled:   # now and then somebody lifts a book to look at it, and puts it back
-            dur, beg = rnd.uniform(16, 24), rnd.uniform(3, 14)
-            body = (f'<g><animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 -18;0 -18;0 0;0 0" '
-                    f'keyTimes="0;.4;.47;.58;.65;1" calcMode="spline" keySplines="0 0 1 1;{EASE};0 0 1 1;{EASE};0 0 1 1" '
-                    f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>{body}</g>')
-        books.append(f'<g class="bk" style="animation-delay:{i * .035:.3f}s"><title>{esc(v["name"])}</title>{body}</g>')
-        shadows.append(f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/>')
+        
+        # Organic tilt on the last volume, naturally resting against the brass bookend
+        is_leaning = (i == last_idx and len(vols) >= 4)
+        tilt_transform = f' transform="rotate(5 {x + w:.1f} {SHELF_Y})"' if is_leaning else ""
+
+        if i in pulled and not is_leaning:   # lifted book with a crimson silk bookmark ribbon
+            dur = rnd.uniform(6.5, 9.0)
+            beg = -rnd.uniform(0, dur)
+            ribbon_dangle = (f'<path d="M{x + w / 2 - 0.8:.1f},{y + h:.1f} Q{x + w / 2 + 2.5:.1f},{y + h + 6:.1f} {x + w / 2 - 1.5:.1f},{y + h + 12:.1f}" '
+                             f'fill="none" stroke="{p["ribbon0"]}" stroke-width="1.8" stroke-linecap="round"/>')
+            body = (f'<g><animateTransform attributeName="transform" type="translate" values="0 0;0 -18;0 -18;0 0;0 0" '
+                    f'keyTimes="0;.22;.52;.70;1" calcMode="spline" keySplines="{EASE};0 0 1 1;{EASE};0 0 1 1" '
+                    f'dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>{body}{ribbon_dangle}</g>')
+        elif is_leaning:
+            body = f'<g{tilt_transform}>{body}</g>'
+
+        books.append(f'<g><title>{esc(v["name"])}</title>{body}</g>')
+        if i in pulled and not is_leaning:
+            shadows.append(f'<g><animate attributeName="opacity" values="1;.3;1" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
+                           f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/></g>')
+        elif is_leaning:
+            shadows.append(f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"{tilt_transform}/>')
+        else:
+            shadows.append(f'<rect x="{x + 3:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h - 3:.1f}" rx="2"/>')
         x += w + gap
-    landed = len(vols) * .035 + .5
-    grain = "".join(f'<path d="M44,{SHELF_Y + yy} C{300 + 80 * j},{SHELF_Y + yy - 2} {700 - 60 * j},{SHELF_Y + yy + 2.5} {W - 44},{SHELF_Y + yy}" '
-                    f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".22" stroke-width=".8"/>' for j, yy in enumerate((4.5, 8, 11.5)))
-    plank = (f'<rect x="44" y="{SHELF_Y + 15}" width="{W - 88}" height="30" fill="url(#wall)"/>'
-             f'<rect x="44" y="{SHELF_Y - 4}" width="{W - 88}" height="5" fill="{p["wood"]}"/>'
-             f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="15" rx="2" fill="url(#wood)"/>{grain}'
-             f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="1.2" fill="#fff" opacity=".2"/>')
-    bx = X1 + .5          # the bookend stands right against the last book, holding the row up
-    bookend = (f'<rect x="{bx}" y="{SHELF_Y - 70}" width="8" height="70" rx="2.5" fill="url(#metal)"/>'
-               f'<rect x="{bx + 1.6}" y="{SHELF_Y - 67}" width="1.3" height="62" fill="#fff" opacity=".25"/>')
+    landed = 0.5
+    grain = "".join(f'<path d="M44,{SHELF_Y + yy} C{280 + 90 * j},{SHELF_Y + yy - 1.8} {680 - 70 * j},{SHELF_Y + yy + 2.2} {W - 44},{SHELF_Y + yy}" '
+                    f'fill="none" stroke="{p["woodLine"]}" stroke-opacity=".26" stroke-width=".9"/>' for j, yy in enumerate((4, 7.5, 11)))
+    plank = (
+        # Underside wall drop shadow
+        f'<rect x="44" y="{SHELF_Y + 16}" width="{W - 88}" height="32" fill="url(#wall)"/>'
+        # Shelf top board (where books stand)
+        f'<rect x="44" y="{SHELF_Y - 4}" width="{W - 88}" height="5" fill="{p["wood"]}"/>'
+        # Front shelf board with wood gradient
+        f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="16" rx="1.5" fill="url(#wood)"/>{grain}'
+        # Top chamfer highlight line (倒角高光微条)
+        f'<rect x="44" y="{SHELF_Y}" width="{W - 88}" height="1.4" fill="#fff" opacity=".35"/>'
+        # Bottom chamfer shadow line (下边缘阴影条)
+        f'<rect x="44" y="{SHELF_Y + 15}" width="{W - 88}" height="1.4" fill="#000" opacity=".35"/>'
+        # Left and right beveled brass corner brackets (黄铜边角包角)
+        f'<path d="M44,{SHELF_Y - 2} L52,{SHELF_Y - 2} L44,{SHELF_Y + 6} Z" fill="url(#metal)" opacity=".7"/>'
+        f'<path d="M{W - 44},{SHELF_Y - 2} L{W - 52},{SHELF_Y - 2} L{W - 44},{SHELF_Y + 6} Z" fill="url(#metal)" opacity=".7"/>'
+    )
+    
+    # Ornate antique brass scroll bookend
+    bx = X1 + 10
+    foil = p["foil"]
+    bookend = (
+        f'<path d="M{bx - 6},{SHELF_Y} L{bx + 22},{SHELF_Y} L{bx + 19},{SHELF_Y - 6} L{bx - 4},{SHELF_Y - 6} Z" fill="url(#metal)"/>'
+        f'<rect x="{bx - 4}" y="{SHELF_Y - 6}" width="23" height="1.2" fill="#fff" opacity=".3"/>'
+        f'<path d="M{bx - 2},{SHELF_Y - 6} '
+        f'C{bx + 1},{SHELF_Y - 28} {bx + 9},{SHELF_Y - 46} {bx + 16},{SHELF_Y - 58} '
+        f'C{bx + 12},{SHELF_Y - 66} {bx + 3},{SHELF_Y - 74} {bx - 3},{SHELF_Y - 78} '
+        f'L{bx - 3},{SHELF_Y - 6} Z" fill="url(#metal)"/>'
+        f'<path d="M{bx + 16},{SHELF_Y - 58} C{bx + 12},{SHELF_Y - 66} {bx + 3},{SHELF_Y - 74} {bx - 3},{SHELF_Y - 78}" '
+        f'fill="none" stroke="#fff" stroke-width="1.2" opacity=".35"/>'
+        f'<path d="M{bx + 1},{SHELF_Y - 14} C{bx + 5},{SHELF_Y - 32} {bx + 8},{SHELF_Y - 46} {bx + 5},{SHELF_Y - 58} '
+        f'C{bx + 2},{SHELF_Y - 66} {bx - 1},{SHELF_Y - 68} {bx},{SHELF_Y - 72}" '
+        f'fill="none" stroke="{foil}" stroke-width="1.2" opacity=".6" stroke-linecap="round"/>'
+        f'<circle cx="{bx - 2}" cy="{SHELF_Y - 81}" r="3" fill="url(#metal)"/>'
+        f'<circle cx="{bx - 2.8}" cy="{SHELF_Y - 81.8}" r="1" fill="#fff" opacity=".4"/>'
+    )
     flowers, falling = vase(p, 1112, SHELF_Y - 2)
     legend, lx = [], 60
     for si, (name, share, _) in enumerate(langs):
@@ -582,9 +689,18 @@ def shelf_card(theme, d):
         lx += 15 + text_width("jbmono", name, 12) + 7 + text_width("jbmono", pct, 12) + 30
     if not vols:
         books = [f'<text x="{W / 2}" y="{SHELF_Y - 60}" text-anchor="middle" class="m" font-size="13" fill="{p["muted"]}">no books on the shelf yet</text>']
-    css = ("@keyframes drop{0%{opacity:0;transform:translateY(-30px)}70%{opacity:1;transform:translateY(2px)}100%{opacity:1;transform:none}}"
-           ".bk{animation:drop .65s cubic-bezier(.3,.7,.4,1) both}"
-           "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}")
+    # Sunlight and ambient light
+    sun_defs, sun = light_rays("sunShelf", 30, W - 60, H, dark, from_left=True, seed=11, count=4)
+    glow_color = "#e4cf5a" if dark else "#f2e173"
+    glow_op = ".10" if dark else ".22"
+    ambient = f'<ellipse cx="520" cy="160" rx="340" ry="110" fill="{glow_color}" opacity="{glow_op}" filter="url(#shelfGlow)"/>'
+
+    # Contact shadow at the base of the books
+    contact_shadow = (
+        f'<rect x="52" y="{SHELF_Y - 14}" width="{X1 - 40}" height="14" fill="#000" opacity="{".38" if dark else ".12"}" filter="url(#bshade)"/>'
+        f'<rect x="50" y="{SHELF_Y - 2}" width="{X1 - 38}" height="3" rx="1.5" fill="#000" opacity="{".60" if dark else ".25"}"/>'
+    )
+    css = "@keyframes late{from{opacity:0}to{opacity:1}}.late{animation:late .8s ease both}"
     note = f"{len(langs)} languages · {d['repos']} public repos · by size of code"
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="languages of {esc(LOGIN)} as a bookshelf">'
             + card_frame(p, W, H, "S")
@@ -599,12 +715,15 @@ def shelf_card(theme, d):
             f'<linearGradient id="metal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["metal0"]}"/><stop offset="1" stop-color="{p["metal1"]}"/></linearGradient>'
             f'<linearGradient id="vaseG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{p["vase0"]}"/><stop offset=".4" stop-color="{p["vase0"]}"/>'
             f'<stop offset="1" stop-color="{p["vase1"]}"/></linearGradient>'
-            f'<filter id="bshade" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="3"/></filter></defs>'
-            + f'<g transform="translate(58 34)" fill="{p["accent"]}">{ICON["star"]}</g>'
-            + f'<text x="76" y="40" class="t" font-size="19" fill="url(#tgS)">bookshelf</text>'
-            + f'<text x="{W - 48}" y="40" class="m" font-size="12" text-anchor="end" fill="{p["label"]}">{note}</text>'
-            + f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="{p["bookShade"]}" opacity="{p["bookShadeO"]}" filter="url(#bshade)">{"".join(shadows)}</g></g>'
-            + "".join(books) + flowers + bookend + plank + falling + "".join(legend) + "</svg>")
+           f'<filter id="bshade" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="3"/></filter>'
+           f'<filter id="shelfGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="45"/></filter>{sun_defs}</defs>'
+           + ambient
+           + f'<g transform="translate(58 34)" fill="{p["accent"]}">{ICON["star"]}</g>'
+           + f'<text x="76" y="40" class="t" font-size="19" fill="url(#tgS)">bookshelf</text>'
+           + f'<text x="{W - 48}" y="40" class="m" font-size="12" text-anchor="end" fill="{p["label"]}">{note}</text>'
+           + f'<g class="late" style="animation-delay:{landed:.2f}s"><g fill="{p["bookShade"]}" opacity="{p["bookShadeO"]}" filter="url(#bshade)">{"".join(shadows)}</g></g>'
+           + contact_shadow
+           + "".join(books) + sun + flowers + bookend + plank + falling + "".join(legend) + "</svg>")
 
 
 # the contents page's bottom-right corner curls up: (px along the bottom edge, px up the right edge) at rest,
